@@ -7,8 +7,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet-routing-machine';
-import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
 import { SPM_CENTER } from '../constants';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -18,6 +16,19 @@ interface RouteInfo { totalTime: number; totalDistance: number; steps: RouteStep
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmtDist = (m: number) => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
 const fmtTime = (s: number) => s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.ceil(s / 60)} min`;
+
+const maneuverText = (type: string, modifier?: string): string => {
+  const mod = modifier ? ` ${modifier === 'left' ? 'a la izquierda' : modifier === 'right' ? 'a la derecha' : modifier === 'straight' ? 'recto' : modifier}` : '';
+  const m: Record<string, string> = {
+    depart: 'Comienza el recorrido', arrive: 'Has llegado al destino',
+    turn: `Gira${mod}`, 'new name': `Continúa${mod}`, continue: `Continúa${mod}`,
+    merge: `Incorpora${mod}`, 'on ramp': 'Toma la incorporación',
+    'off ramp': 'Sal por la salida', fork: `En el cruce, toma${mod}`,
+    'end of road': `Al final, gira${mod}`, roundabout: 'En la rotonda, sigue',
+    rotary: 'En la rotonda, sigue', notification: `Continúa${mod}`,
+  };
+  return m[type] || `Continúa${mod}`;
+};
 
 // ─── Turn arrow icon ─────────────────────────────────────────────────────────
 const TurnArrow: React.FC<{ type: string; size?: number; color?: string }> = ({ type, size = 36, color = 'white' }) => {
@@ -58,48 +69,65 @@ const MapFollower: React.FC<{ center: [number, number] }> = ({ center }) => {
   return null;
 };
 
-// ─── Base routing control (reusable) ─────────────────────────────────────────
-const RoutingControl: React.FC<{
+// ─── OSRM route polyline (reliable, no leaflet-routing-machine) ───────────────
+const RoutePolylineLayer: React.FC<{
   from: [number, number];
   to: [number, number];
   navMode?: boolean;
   onRouteFound?: (info: RouteInfo) => void;
 }> = ({ from, to, navMode = false, onRouteFound }) => {
   const map = useMap();
-  const ctrlRef = useRef<any>(null);
+  const layersRef = useRef<L.Layer[]>([]);
+
+  const clearLayers = () => {
+    layersRef.current.forEach(l => { try { map.removeLayer(l); } catch {} });
+    layersRef.current = [];
+  };
 
   useEffect(() => {
-    if (!(L as any).Routing) return;
-    try {
-      const ctrl = (L as any).Routing.control({
-        waypoints: [L.latLng(from[0], from[1]), L.latLng(to[0], to[1])],
-        routeWhileDragging: false, addWaypoints: false, draggableWaypoints: false,
-        show: false, createMarker: () => null, fitSelectedRoutes: false,
-        lineOptions: {
-          styles: navMode
-            ? [{ color: '#0090b8', weight: 12, opacity: 0.3 }, { color: '#00d4ff', weight: 7, opacity: 1 }]
-            : [{ color: '#6b21a8', weight: 9, opacity: 0.25 }, { color: '#4f46e5', weight: 6, opacity: 1 }],
-          extendToWaypoints: true, missingRouteTolerance: 0
-        }
-      }).addTo(map);
-      ctrl.on('routesfound', (e: any) => {
-        const r = e.routes[0];
-        if (onRouteFound && r) {
+    const color = navMode ? '#00d4ff' : '#4f46e5';
+    const glow  = navMode ? '#0090b8' : '#6b21a8';
+    const w = navMode ? 7 : 5;
+    let cancelled = false;
+
+    const draw = async () => {
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson&steps=true`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (cancelled || data.code !== 'Ok' || !data.routes?.[0]) throw new Error('no route');
+
+        const route = data.routes[0];
+        const coords: [number, number][] = route.geometry.coordinates.map(
+          ([lng, lat]: number[]) => [lat, lng] as [number, number]
+        );
+        clearLayers();
+        layersRef.current.push(
+          L.polyline(coords, { color: glow, weight: w + 6, opacity: 0.18 }).addTo(map),
+          L.polyline(coords, { color, weight: w, opacity: 1 }).addTo(map)
+        );
+        if (onRouteFound) {
           onRouteFound({
-            totalTime: r.summary.totalTime,
-            totalDistance: r.summary.totalDistance,
-            steps: (r.instructions || []).map((i: any) => ({ text: i.text, distance: i.distance, type: i.type }))
+            totalTime: route.duration,
+            totalDistance: route.distance,
+            steps: (route.legs[0]?.steps || []).map((s: any) => ({
+              text: maneuverText(s.maneuver?.type || 'continue', s.maneuver?.modifier),
+              distance: s.distance,
+              type: s.maneuver?.type || 'continue'
+            }))
           });
         }
-      });
-      ctrlRef.current = ctrl;
-    } catch (e) {}
-    return () => { if (ctrlRef.current) { try { map.removeControl(ctrlRef.current); } catch {} ctrlRef.current = null; } };
-  }, [map]);
+      } catch {
+        if (cancelled) return;
+        clearLayers();
+        layersRef.current.push(
+          L.polyline([from, to], { color, weight: w, opacity: 0.6, dashArray: '10,7' }).addTo(map)
+        );
+      }
+    };
 
-  useEffect(() => {
-    if (!ctrlRef.current) return;
-    try { ctrlRef.current.setWaypoints([L.latLng(from[0], from[1]), L.latLng(to[0], to[1])]); } catch {}
+    draw();
+    return () => { cancelled = true; clearLayers(); };
   }, [from[0], from[1], to[0], to[1]]);
 
   return null;
@@ -111,7 +139,7 @@ const DeliveryTrackingMap: React.FC<{ deliveryLoc: [number, number]; clientLoc?:
     <MapContainer center={deliveryLoc} zoom={16} className="h-full w-full" scrollWheelZoom={false} zoomControl={false}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
       <MapFollower center={deliveryLoc} />
-      {clientLoc && <RoutingControl from={deliveryLoc} to={clientLoc} />}
+      {clientLoc && <RoutePolylineLayer from={deliveryLoc} to={clientLoc} />}
       <Marker position={deliveryLoc} icon={L.divIcon({
         className: '', iconSize: [38, 38], iconAnchor: [19, 38],
         html: `<div style="width:38px;height:38px;background:#4f46e5;border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(79,70,229,.5)"><svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg></div>`
@@ -135,7 +163,7 @@ const WazeNavMap: React.FC<{
   <MapContainer center={deliveryLoc} zoom={17} className="h-full w-full" scrollWheelZoom={false} zoomControl={false}>
     <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="" />
     <MapFollower center={deliveryLoc} />
-    <RoutingControl from={deliveryLoc} to={clientLoc} navMode onRouteFound={onRouteFound} />
+    <RoutePolylineLayer from={deliveryLoc} to={clientLoc} navMode onRouteFound={onRouteFound} />
     {/* Navigation arrow */}
     <Marker position={deliveryLoc} icon={L.divIcon({
       className: '', iconSize: [40, 48], iconAnchor: [20, 24],
