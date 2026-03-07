@@ -1,282 +1,227 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Clock, MapPin, User, Phone, MessageCircle, CheckCircle2, Package, Truck, ChefHat, Bell } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Clock, MapPin, User, Phone, MessageCircle, CheckCircle2, Package, Truck, ChefHat, Bell, X, AlertCircle } from 'lucide-react';
 import { Order } from '../types';
-import { OrderService } from '../services/OrderService';
+import FirebaseServiceV2 from '../services/FirebaseServiceV2';
+import { useAuth } from '../contexts/AuthContext';
 
-type BusinessOrderStatus = 'recibido' | 'preparando' | 'en camino' | 'entregado';
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Nuevo Pedido',
+  accepted: 'Aceptado',
+  preparing: 'Preparando',
+  ready: 'Listo para Entrega',
+  on_the_way: 'En Camino',
+  delivered: 'Entregado',
+  cancelled: 'Cancelado'
+};
 
-interface BusinessOrder extends Order {
-  businessStatus: BusinessOrderStatus;
-  preparationTime?: number;
-  estimatedDelivery?: string;
-}
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  accepted: 'bg-blue-100 text-blue-700 border-blue-200',
+  preparing: 'bg-orange-100 text-orange-700 border-orange-200',
+  ready: 'bg-purple-100 text-purple-700 border-purple-200',
+  on_the_way: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  delivered: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  cancelled: 'bg-red-100 text-red-700 border-red-200'
+};
 
 const BusinessOrders: React.FC = () => {
-  const [orders, setOrders] = useState<BusinessOrder[]>([]);
-  const [filterStatus, setFilterStatus] = useState<BusinessOrderStatus | 'todos'>('todos');
+  const { user } = useAuth();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [filter, setFilter] = useState<string>('active');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    return OrderService.subscribe((orderData) => {
-      const businessOrders = orderData.map((order: Order) => ({
-        ...order,
-        businessStatus: order.status === 'pending' ? 'recibido' :
-                    order.status === 'preparing' ? 'preparando' :
-                    order.status === 'ready' || order.status === 'picked_up' ? 'en camino' :
-                    order.status === 'delivered' ? 'entregado' : 'recibido',
-        preparationTime: Math.floor(Math.random() * 20) + 10, // Simulación
-        estimatedDelivery: '25-35 min'
-      }));
-      setOrders(businessOrders);
+    const businessId = (user as any)?.businessId;
+    if (!businessId) {
+      setLoading(false);
+      return;
+    }
+    const unsub = FirebaseServiceV2.subscribeToBusinessOrders(businessId, (data) => {
+      setOrders(data);
+      setLoading(false);
     });
-  }, []);
+    return unsub;
+  }, [(user as any)?.businessId]);
 
-  const updateOrderStatus = (orderId: string, newStatus: BusinessOrderStatus) => {
-    const serviceStatus = newStatus === 'recibido' ? 'pending' :
-                       newStatus === 'preparando' ? 'preparing' :
-                       newStatus === 'en camino' ? 'ready' :
-                       newStatus === 'entregado' ? 'delivered' : 'pending';
-
-    OrderService.updateStatus(orderId, serviceStatus);
-    setOrders(orders.map(order => 
-      order.id === orderId ? { ...order, businessStatus: newStatus } : order
-    ));
-  };
-
-  const getStatusColor = (status: BusinessOrderStatus) => {
-    switch (status) {
-      case 'recibido': return 'bg-yellow-100 text-yellow-700';
-      case 'preparando': return 'bg-blue-100 text-blue-700';
-      case 'en camino': return 'bg-purple-100 text-purple-700';
-      case 'entregado': return 'bg-emerald-100 text-emerald-700';
-      default: return 'bg-gray-100 text-gray-700';
+  const handleUpdateStatus = async (orderId: string, status: string) => {
+    try {
+      await FirebaseServiceV2.updateOrder(orderId, { status });
+    } catch (err) {
+      console.error('Error actualizando estado:', err);
     }
   };
 
-  const getStatusIcon = (status: BusinessOrderStatus) => {
-    switch (status) {
-      case 'recibido': return <Bell className="w-4 h-4" />;
-      case 'preparando': return <ChefHat className="w-4 h-4" />;
-      case 'en camino': return <Truck className="w-4 h-4" />;
-      case 'entregado': return <CheckCircle2 className="w-4 h-4" />;
-      default: return <Clock className="w-4 h-4" />;
-    }
+  const filtered = orders.filter(o => {
+    if (filter === 'active') return !['delivered', 'cancelled'].includes(o.status);
+    if (filter === 'pending') return o.status === 'pending';
+    if (filter === 'preparing') return ['accepted', 'preparing'].includes(o.status);
+    if (filter === 'ready') return o.status === 'ready';
+    if (filter === 'done') return ['delivered', 'cancelled'].includes(o.status);
+    return true;
+  });
+
+  const counts = {
+    active: orders.filter(o => !['delivered', 'cancelled'].includes(o.status)).length,
+    pending: orders.filter(o => o.status === 'pending').length,
+    preparing: orders.filter(o => ['accepted', 'preparing'].includes(o.status)).length,
+    ready: orders.filter(o => o.status === 'ready').length,
+    done: orders.filter(o => ['delivered', 'cancelled'].includes(o.status)).length,
   };
 
-  const getStatusText = (status: BusinessOrderStatus) => {
-    switch (status) {
-      case 'recibido': return 'Recibido';
-      case 'preparando': return 'Preparando';
-      case 'en camino': return 'En Camino';
-      case 'entregado': return 'Entregado';
-      default: return status;
-    }
-  };
-
-  const filteredOrders = filterStatus === 'todos' 
-    ? orders 
-    : orders.filter(order => order.businessStatus === filterStatus);
-
-  const activeOrders = orders.filter(order => order.businessStatus !== 'entregado');
-
-  const statusCounts = {
-    recibido: orders.filter(o => o.businessStatus === 'recibido').length,
-    preparando: orders.filter(o => o.businessStatus === 'preparando').length,
-    'en camino': orders.filter(o => o.businessStatus === 'en camino').length,
-    entregado: orders.filter(o => o.businessStatus === 'entregado').length
-  };
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black font-display text-gray-900">Pedidos en Tiempo Real</h2>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-xl">
-            <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse" />
-            <span className="text-xs font-bold">{activeOrders.length} activos</span>
-          </div>
+        <div className="flex items-center gap-2 bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-xl">
+          <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse" />
+          <span className="text-xs font-bold">{counts.active} activos</span>
         </div>
       </div>
 
-      {/* Filtros y estadísticas */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { status: 'recibido', count: statusCounts.recibido },
-            { status: 'preparando', count: statusCounts.preparando },
-            { status: 'en camino', count: statusCounts['en camino'] },
-            { status: 'entregado', count: statusCounts.entregado }
-          ].map(({ status, count }) => (
-            <button
-              key={status}
-              onClick={() => setFilterStatus(filterStatus === status ? 'todos' : status)}
-              className={`p-4 rounded-xl border-2 transition-all ${
-                filterStatus === status 
-                  ? 'border-primary bg-primary/5' 
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                {getStatusIcon(status as BusinessOrderStatus)}
-                <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                  {getStatusText(status as BusinessOrderStatus)}
-                </span>
-              </div>
-              <p className="text-2xl font-black text-gray-900">{count}</p>
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={() => setFilterStatus('todos')}
-          className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${
-            filterStatus === 'todos' 
-              ? 'bg-primary text-white' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Ver todos los pedidos
-        </button>
+      {/* Tabs filtro */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[
+          { key: 'active', label: 'Activos', count: counts.active },
+          { key: 'pending', label: 'Nuevos', count: counts.pending },
+          { key: 'preparing', label: 'Preparando', count: counts.preparing },
+          { key: 'ready', label: 'Listos', count: counts.ready },
+          { key: 'done', label: 'Finalizados', count: counts.done },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setFilter(tab.key)}
+            className={`flex-shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${
+              filter === tab.key ? 'bg-primary text-white shadow-lg' : 'bg-white text-gray-600 border border-gray-200'
+            }`}
+          >
+            {tab.label}
+            {tab.count > 0 && (
+              <span className={`text-xs rounded-full px-1.5 py-0.5 ${filter === tab.key ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
-      {/* Lista de pedidos */}
+      {/* Lista */}
       <div className="space-y-4">
-        {filteredOrders.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="bg-white p-12 rounded-2xl border border-dashed border-gray-200 text-center">
             <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-400 font-bold">
-              {filterStatus === 'todos' 
-                ? 'No tienes pedidos activos' 
-                : `No hay pedidos con estado "${getStatusText(filterStatus as BusinessOrderStatus)}"`
-              }
-            </p>
+            <p className="text-gray-400 font-bold">No hay pedidos en esta categoría</p>
           </div>
         ) : (
-          filteredOrders.map((order) => (
+          filtered.map(order => (
             <motion.div
               key={order.id}
-              layout
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
               className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4"
             >
-              {/* Header del pedido */}
-              <div className="flex items-center justify-between">
+              {/* Header */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-3">
-                  <div className="bg-gray-100 p-2 rounded-xl">
-                    <User className="w-5 h-5 text-gray-600" />
+                  <div className={`p-2 rounded-xl border ${
+                    order.status === 'pending' ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-100 border-gray-200'
+                  }`}>
+                    {order.status === 'pending' ? <Bell className="w-5 h-5 text-yellow-600 animate-bounce" /> : <Package className="w-5 h-5 text-gray-600" />}
                   </div>
                   <div>
-                    <p className="font-bold text-gray-900">Pedido #{order.id.slice(-6)}</p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(order.createdAt).toLocaleTimeString()}
-                    </p>
+                    <p className="font-bold text-gray-900">Pedido #{order.id.slice(-6).toUpperCase()}</p>
+                    <p className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleString('es-DO')}</p>
                   </div>
                 </div>
-                
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${getStatusColor(order.businessStatus)}`}>
-                    <div className="flex items-center gap-1">
-                      {getStatusIcon(order.businessStatus)}
-                      {getStatusText(order.businessStatus)}
-                    </div>
-                  </span>
-                </div>
+                <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase border ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                  {STATUS_LABELS[order.status] || order.status}
+                </span>
               </div>
 
-              {/* Información del cliente */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl">
+              {/* Cliente */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-gray-50 rounded-xl">
                 <div className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-700">Cliente: #{order.clientId.slice(-4)}</span>
+                  <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span className="text-sm text-gray-700 font-medium">{order.clientName || `Cliente #${order.clientId?.slice(-4)}`}</span>
                 </div>
-                {order.clientWhatsapp && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <a 
-                      href={`https://wa.me/${order.clientWhatsapp}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-emerald-600 hover:underline font-medium"
-                    >
-                      {order.clientWhatsapp}
-                    </a>
+                {(order.clientWhatsapp || order.clientPhone) && (
+                  <a href={`https://wa.me/${(order.clientWhatsapp || order.clientPhone || '').replace(/\D/g, '')}`}
+                     target="_blank" rel="noreferrer"
+                     className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700">
+                    <Phone className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm font-medium">{order.clientWhatsapp || order.clientPhone}</span>
+                  </a>
+                )}
+                {order.deliveryAddress && (
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="text-sm text-gray-700">{order.deliveryAddress}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-700">San Pedro de Macorís</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-700">
-                    {order.estimatedDelivery || '25-35 min'}
-                  </span>
-                </div>
               </div>
 
-              {/* Items del pedido */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-bold text-gray-700">Items del pedido:</h4>
-                <div className="space-y-1">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center py-2 border-b border-gray-50">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-600">{item.quantity}x</span>
-                        <span className="text-sm text-gray-900">{item.name}</span>
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">
-                        RD$ {item.price * item.quantity}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between items-center pt-2 font-bold">
-                  <span className="text-gray-700">Total:</span>
-                  <span className="text-lg text-emerald-600">RD$ {order.total}</span>
+              {/* Items */}
+              <div className="space-y-1">
+                {order.items?.map(item => (
+                  <div key={item.id} className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
+                    <span className="text-sm text-gray-700"><span className="font-bold">{item.quantity}x</span> {item.name}</span>
+                    <span className="text-sm font-bold text-gray-900">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between pt-2 font-bold">
+                  <span className="text-gray-700">Total del pedido</span>
+                  <span className="text-lg text-emerald-600">RD$ {order.total?.toFixed(0)}</span>
                 </div>
               </div>
 
               {/* Acciones */}
-              <div className="flex gap-2">
-                {order.businessStatus === 'recibido' && (
-                  <button
-                    onClick={() => updateOrderStatus(order.id, 'preparando')}
-                    className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all"
-                  >
-                    <ChefHat className="w-4 h-4 inline mr-2" />
-                    COMENZAR PREPARACIÓN
+              <div className="flex gap-2 flex-wrap">
+                {order.status === 'pending' && (
+                  <>
+                    <button onClick={() => handleUpdateStatus(order.id, 'accepted')}
+                      className="flex-1 min-w-[120px] bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" /> Aceptar
+                    </button>
+                    <button onClick={() => handleUpdateStatus(order.id, 'cancelled')}
+                      className="px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-all flex items-center gap-2">
+                      <X className="w-4 h-4" /> Rechazar
+                    </button>
+                  </>
+                )}
+                {order.status === 'accepted' && (
+                  <button onClick={() => handleUpdateStatus(order.id, 'preparing')}
+                    className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                    <ChefHat className="w-4 h-4" /> Comenzar Preparación
                   </button>
                 )}
-                
-                {order.businessStatus === 'preparando' && (
-                  <button
-                    onClick={() => updateOrderStatus(order.id, 'en camino')}
-                    className="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-all"
-                  >
-                    <Truck className="w-4 h-4 inline mr-2" />
-                    MARCAR COMO EN CAMINO
+                {order.status === 'preparing' && (
+                  <button onClick={() => handleUpdateStatus(order.id, 'ready')}
+                    className="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-all flex items-center justify-center gap-2">
+                    <Truck className="w-4 h-4" /> Marcar como Listo
                   </button>
                 )}
-                
-                {order.businessStatus === 'en camino' && (
-                  <button
-                    onClick={() => updateOrderStatus(order.id, 'entregado')}
-                    className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all"
-                  >
-                    <CheckCircle2 className="w-4 h-4 inline mr-2" />
-                    CONFIRMAR ENTREGA
-                  </button>
+                {order.status === 'ready' && (
+                  <div className="flex-1 flex items-center gap-2 p-3 bg-purple-50 rounded-xl border border-purple-200">
+                    <AlertCircle className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                    <span className="text-sm font-bold text-purple-700">Esperando repartidor...</span>
+                  </div>
                 )}
-
-                {order.clientWhatsapp && (
-                  <a
-                    href={`https://wa.me/${order.clientWhatsapp}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-3 bg-emerald-50 text-emerald-600 rounded-xl font-bold hover:bg-emerald-100 transition-all"
-                  >
+                {order.status === 'on_the_way' && (
+                  <div className="flex-1 flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
+                    <Truck className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    <span className="text-sm font-bold text-indigo-700">En camino con {order.deliveryName || 'repartidor'}</span>
+                  </div>
+                )}
+                {(order.clientWhatsapp || order.clientPhone) && !['delivered', 'cancelled'].includes(order.status) && (
+                  <a href={`https://wa.me/${(order.clientWhatsapp || order.clientPhone || '').replace(/\D/g, '')}`}
+                     target="_blank" rel="noreferrer"
+                     className="px-4 py-3 bg-emerald-50 text-emerald-600 rounded-xl font-bold hover:bg-emerald-100 transition-all">
                     <MessageCircle className="w-4 h-4" />
                   </a>
                 )}

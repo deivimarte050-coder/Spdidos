@@ -22,7 +22,8 @@ const COLLECTIONS = {
   USERS: 'users',
   BUSINESSES: 'businesses',
   ORDERS: 'orders',
-  DELIVERY_PERSONS: 'deliveryPersons'
+  DELIVERY_PERSONS: 'deliveryPersons',
+  DELIVERY_LOCATIONS: 'delivery_locations'
 };
 
 // Helper para convertir Timestamp a string
@@ -141,6 +142,19 @@ class FirebaseServiceV2 {
     }
   }
 
+  async deleteBusiness(id: string): Promise<void> {
+    try {
+      console.log('[FirebaseV2] 🗑️ Eliminando negocio:', id);
+      const { doc, deleteDoc } = await import('firebase/firestore');
+      const businessRef = doc(db, COLLECTIONS.BUSINESSES, id);
+      await deleteDoc(businessRef);
+      console.log('✅ [FirebaseV2] Negocio eliminado:', id);
+    } catch (error: any) {
+      console.error('❌ [FirebaseV2] Error eliminando negocio:', error);
+      throw error;
+    }
+  }
+
   // ============ PEDIDOS ============
   
   async getOrders(): Promise<any[]> {
@@ -174,6 +188,84 @@ class FirebaseServiceV2 {
       console.error('❌ [FirebaseV2] Error agregando pedido:', error);
       throw error;
     }
+  }
+
+  async updateOrder(id: string, data: any): Promise<void> {
+    try {
+      const orderRef = doc(db, COLLECTIONS.ORDERS, id);
+      await updateDoc(orderRef, { ...data, updatedAt: Timestamp.now() });
+    } catch (error: any) {
+      console.error('❌ [FirebaseV2] Error actualizando pedido:', error);
+      throw error;
+    }
+  }
+
+  subscribeToOrders(callback: (orders: any[]) => void): () => void {
+    const q = query(collection(db, COLLECTIONS.ORDERS), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      const orders = snap.docs.map(d => ({ id: d.id, ...convertTimestamp(d.data()) }));
+      callback(orders);
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToOrders error:', err));
+  }
+
+  subscribeToBusinessOrders(businessId: string, callback: (orders: any[]) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.ORDERS),
+      where('businessId', '==', businessId)
+    );
+    return onSnapshot(q, (snap) => {
+      const orders = snap.docs
+        .map(d => ({ id: d.id, ...convertTimestamp(d.data()) }))
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      callback(orders);
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToBusinessOrders error:', err));
+  }
+
+  subscribeToClientOrders(clientId: string, callback: (orders: any[]) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.ORDERS),
+      where('clientId', '==', clientId)
+    );
+    return onSnapshot(q, (snap) => {
+      const orders = snap.docs
+        .map(d => ({ id: d.id, ...convertTimestamp(d.data()) }))
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      callback(orders);
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToClientOrders error:', err));
+  }
+
+  subscribeToDeliveryOrders(callback: (orders: any[]) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.ORDERS),
+      where('status', 'in', ['ready', 'on_the_way'])
+    );
+    return onSnapshot(q, (snap) => {
+      const orders = snap.docs
+        .map(d => ({ id: d.id, ...convertTimestamp(d.data()) }))
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      callback(orders);
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToDeliveryOrders error:', err));
+  }
+
+  async updateDeliveryLocation(orderId: string, lat: number, lng: number): Promise<void> {
+    try {
+      const locRef = doc(db, COLLECTIONS.DELIVERY_LOCATIONS, orderId);
+      await setDoc(locRef, { lat, lng, updatedAt: Timestamp.now() }, { merge: true });
+    } catch (error: any) {
+      console.error('❌ [FirebaseV2] Error actualizando ubicación:', error);
+    }
+  }
+
+  subscribeToDeliveryLocation(orderId: string, callback: (loc: { lat: number; lng: number } | null) => void): () => void {
+    const locRef = doc(db, COLLECTIONS.DELIVERY_LOCATIONS, orderId);
+    return onSnapshot(locRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        callback({ lat: data.lat, lng: data.lng });
+      } else {
+        callback(null);
+      }
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToDeliveryLocation error:', err));
   }
 
   // ============ REPARTIDORES ============

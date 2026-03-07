@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Camera, MapPin, Clock, Star, Edit2, Save, X, Upload, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import FirebaseServiceV2 from '../services/FirebaseServiceV2';
+import EventService from '../services/EventService';
 
-interface BusinessProfile {
+interface BusinessProfileData {
+  id?: string;
   name: string;
   description: string;
   cuisine: string;
@@ -14,12 +17,15 @@ interface BusinessProfile {
   whatsapp: string;
   image: string;
   isActive: boolean;
+  status?: string;
 }
 
 const BusinessProfile: React.FC = () => {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState<BusinessProfile>({
+  const [isLoading, setIsLoading] = useState(true);
+  const [businessId, setBusinessId] = useState<string>('');
+  const [profile, setProfile] = useState<BusinessProfileData>({
     name: 'Mi Restaurante',
     description: 'Deliciosa comida local con los mejores ingredientes',
     cuisine: 'Dominicana • Internacional',
@@ -32,22 +38,198 @@ const BusinessProfile: React.FC = () => {
     isActive: true
   });
 
-  const handleSave = () => {
-    // Aquí iría la lógica para guardar el perfil
-    console.log('Guardando perfil:', profile);
-    setIsEditing(false);
+  // Cargar datos del negocio desde Firebase
+  useEffect(() => {
+    const loadBusinessData = async () => {
+      if (user?.role === 'business') {
+        try {
+          setIsLoading(true);
+          
+          const businesses = await FirebaseServiceV2.getBusinesses();
+          
+          let business = null;
+          
+          // 1. Buscar por businessId almacenado en el usuario (más confiable)
+          if (user.businessId) {
+            business = businesses.find(b => b.id === user.businessId);
+          }
+          
+          // 2. Buscar por email
+          if (!business && user.email) {
+            business = businesses.find(b => b.email?.toLowerCase() === user.email?.toLowerCase());
+          }
+          
+          // 3. Buscar por id del usuario
+          if (!business && user.id) {
+            business = businesses.find(b => b.userId === user.id || b.ownerId === user.id);
+          }
+          
+          // 4. Buscar por nombre como último recurso
+          if (!business && user.name) {
+            business = businesses.find(b =>
+              b.name?.toLowerCase() === user.name?.toLowerCase()
+            );
+          }
+          
+          if (business) {
+            setBusinessId(business.id);
+            setProfile({
+              id: business.id,
+              name: business.name || 'Mi Restaurante',
+              description: business.description || '',
+              cuisine: business.cuisine || business.category || '',
+              rating: business.rating || 4.8,
+              deliveryTime: business.deliveryTime || '25-35 min',
+              address: business.address || '',
+              phone: business.phone || '',
+              whatsapp: business.whatsapp || business.phone || '',
+              image: business.image || 'https://picsum.photos/seed/restaurant/400/300',
+              isActive: business.status === 'active',
+              status: business.status || 'active'
+            });
+          } else {
+            console.warn('⚠️ [BusinessProfile] No se encontró negocio para:', user.email);
+          }
+        } catch (error) {
+          console.error('❌ [BusinessProfile] Error cargando datos:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadBusinessData();
+  }, [user]);
+
+  const getSafeImage = async (imageData: string): Promise<string> => {
+    if (!imageData || !imageData.startsWith('data:')) return imageData;
+    const sizeKB = Math.round((imageData.length * 3) / 4 / 1024);
+    if (sizeKB <= 600) return imageData;
+    // Re-compress from base64
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 450;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.5));
+      };
+      img.onerror = () => resolve('');
+      img.src = imageData;
+    });
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfile({ ...profile, image: reader.result as string });
+  const handleSave = async () => {
+    if (!businessId) {
+      alert('❌ Error: No se encontró el ID del negocio. Por favor recarga la página.');
+      return;
+    }
+
+    try {
+      const safeImage = await getSafeImage(profile.image);
+      const updateData = {
+        name: profile.name,
+        description: profile.description,
+        cuisine: profile.cuisine,
+        category: profile.cuisine,
+        rating: profile.rating,
+        deliveryTime: profile.deliveryTime,
+        address: profile.address,
+        phone: profile.phone,
+        whatsapp: profile.whatsapp,
+        image: safeImage,
+        status: profile.isActive ? 'active' : 'inactive'
       };
-      reader.readAsDataURL(file);
+      await FirebaseServiceV2.updateBusiness(businessId, updateData);
+      EventService.emit('business-profile:updated');
+      alert('✅ Perfil actualizado correctamente');
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error('❌ [BusinessProfile] Error guardando:', error);
+      alert(`❌ Error al guardar: ${error.message || 'Error desconocido'}`);
     }
   };
+
+  const compressImage = (file: File, maxWidth = 500, maxHeight = 500, quality = 0.65): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        let { width, height } = img;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', quality);
+        const sizeKB = Math.round((compressed.length * 3) / 4 / 1024);
+        console.log(`📸 Imagen comprimida: ${width}x${height} · ${sizeKB} KB`);
+        if (sizeKB > 700) {
+          resolve(canvas.toDataURL('image/jpeg', 0.4));
+        } else {
+          resolve(compressed);
+        }
+      };
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Error al cargar imagen')); };
+      img.src = objectUrl;
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert('❌ La imagen es muy grande. Máximo 10MB.');
+      return;
+    }
+    try {
+      const compressed = await compressImage(file);
+      setProfile(prev => ({ ...prev, image: compressed }));
+    } catch {
+      alert('❌ Error al procesar la imagen');
+    }
+  };
+
+  const handleToggleStatus = async () => {
+    const newIsActive = !profile.isActive;
+    setProfile({ ...profile, isActive: newIsActive });
+    
+    if (businessId) {
+      try {
+        console.log('📤 [BusinessProfile] Llamando a FirebaseServiceV2.updateBusiness...');
+        await FirebaseServiceV2.updateBusiness(businessId, {
+          status: newIsActive ? 'active' : 'inactive'
+        });
+        console.log('✅ [BusinessProfile] Estado actualizado:', newIsActive ? 'activo' : 'inactivo');
+      } catch (error) {
+        console.error('❌ [BusinessProfile] Error actualizando estado:', error);
+        // Revertir en caso de error
+        setProfile({ ...profile, isActive: !newIsActive });
+      }
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -213,7 +395,7 @@ const BusinessProfile: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={() => setProfile({ ...profile, isActive: !profile.isActive })}
+            onClick={handleToggleStatus}
             className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
               profile.isActive ? 'bg-emerald-500' : 'bg-gray-300'
             }`}

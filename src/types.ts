@@ -1,6 +1,6 @@
 export type UserRole = 'client' | 'delivery' | 'business' | 'admin';
 
-export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'picked_up' | 'delivered';
+export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'picked_up' | 'on_the_way' | 'delivered' | 'cancelled';
 
 export interface User {
   id: string;
@@ -12,6 +12,8 @@ export interface User {
   password?: string;
   status?: 'active' | 'inactive';
   createdAt?: string;
+  businessId?: string;
+  uid?: string;
 }
 
 export interface Application {
@@ -89,6 +91,7 @@ export interface Order {
   businessEmail: string;
   businessPhone: string;
   deliveryId?: string;
+  deliveryName?: string;
   items: CartItem[];
   subtotal: number;
   deliveryFee: number;
@@ -98,6 +101,12 @@ export interface Order {
   deliveryAddress: string;
   deliveryInstructions: string;
   createdAt: string;
+  clientLocation?: [number, number];
+  businessLocation?: [number, number];
+  deliveryLocation?: [number, number];
+  eta?: string;
+  distance?: string;
+  rejectionReason?: string;
   tracking?: {
     status: string;
     timestamp?: number;

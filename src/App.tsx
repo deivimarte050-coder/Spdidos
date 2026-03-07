@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Clock, Star, Plus, Minus, CheckCircle2, ShoppingBag } from 'lucide-react';
+import { ChevronLeft, Clock, Star, Plus, Minus, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import Layout from './components/Layout';
 import HomeView from './components/HomeView';
 import BusinessList from './components/BusinessList';
@@ -13,6 +15,94 @@ import { CartItem, View, Order } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
 import FirebaseServiceV2 from './services/FirebaseServiceV2';
+import EventService from './services/EventService';
+import { SPM_CENTER } from './constants';
+
+const ORDER_STEPS = [
+  { status: 'pending',    label: 'Pedido recibido',   icon: Package },
+  { status: 'accepted',   label: 'Aceptado',           icon: CheckCircle2 },
+  { status: 'preparing',  label: 'Preparando',         icon: ChefHat },
+  { status: 'ready',      label: 'Listo para envío',   icon: ShoppingBag },
+  { status: 'on_the_way', label: 'En camino',          icon: Truck },
+  { status: 'delivered',  label: 'Entregado',          icon: CheckCircle2 },
+];
+
+const TrackingView: React.FC<{
+  orderId: string | null;
+  orders: Order[];
+  deliveryLocation: { lat: number; lng: number } | null;
+  onBack: () => void;
+}> = ({ orderId, orders, deliveryLocation, onBack }) => {
+  const order = orderId ? orders.find(o => o.id === orderId) || orders[0] : orders[0];
+  const stepIndex = order ? ORDER_STEPS.findIndex(s => s.status === order.status) : 0;
+  const deliverPos: [number, number] = deliveryLocation ? [deliveryLocation.lat, deliveryLocation.lng] : SPM_CENTER;
+
+  return (
+    <div className="max-w-lg mx-auto space-y-6 px-4 py-6">
+      <div className="text-center space-y-1">
+        <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto" />
+        <h2 className="text-2xl font-black font-display tracking-tight">¡Pedido Confirmado!</h2>
+        {order && <p className="text-gray-500 text-sm">#{order.id.slice(-8).toUpperCase()} · {order.businessName}</p>}
+      </div>
+
+      {/* Progress steps */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <h3 className="font-bold text-gray-900 mb-4">Estado en tiempo real</h3>
+        <div className="space-y-3">
+          {ORDER_STEPS.map((step, idx) => {
+            const Icon = step.icon;
+            const done = idx < stepIndex;
+            const current = idx === stepIndex;
+            return (
+              <div key={step.status} className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+                  done ? 'bg-emerald-500 text-white' : current ? 'bg-primary text-white ring-4 ring-primary/20' : 'bg-gray-100 text-gray-400'
+                }`}>
+                  <Icon className="w-4 h-4" />
+                </div>
+                <span className={`text-sm font-medium ${current ? 'text-primary font-bold' : done ? 'text-gray-500 line-through' : 'text-gray-400'}`}>
+                  {step.label}
+                </span>
+                {current && <span className="ml-auto text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold animate-pulse">Ahora</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Mapa cuando el repartidor está en camino */}
+      {order?.status === 'on_the_way' && deliveryLocation && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 border-b border-gray-50 flex items-center gap-2">
+            <Navigation className="w-4 h-4 text-blue-600" />
+            <span className="font-bold text-sm text-gray-900">Repartidor en camino</span>
+            <span className="ml-auto text-xs text-gray-400 animate-pulse">En vivo</span>
+          </div>
+          <div className="h-[220px]">
+            <MapContainer center={deliverPos} zoom={15} className="h-full w-full" scrollWheelZoom={false}>
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <Marker position={deliverPos} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png', iconSize: [32, 32], iconAnchor: [16, 32] })}>
+                <Popup>Tu repartidor</Popup>
+              </Marker>
+            </MapContainer>
+          </div>
+        </div>
+      )}
+
+      {order?.status === 'delivered' ? (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
+          <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+          <p className="font-bold text-emerald-800">¡Pedido entregado! Buen provecho 🎉</p>
+        </div>
+      ) : null}
+
+      <button onClick={onBack}
+        className="w-full bg-primary text-white py-4 rounded-2xl font-bold hover:bg-primary/90 transition-all">
+        Volver al Inicio
+      </button>
+    </div>
+  );
+};
 
 function AppContent() {
   const { user, logout } = useAuth();
@@ -21,22 +111,27 @@ function AppContent() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const deliveryUnsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const loadOrders = () => {
-      const orders = DataService.getOrders();
-      if (user?.role === 'client') {
-        setActiveOrders(orders.filter(o => o.customerId === user.id && o.status !== 'delivered'));
-      } else if (user?.role === 'admin') {
-        setActiveOrders(orders.filter(o => o.status !== 'delivered'));
-      }
-    };
+    if (!user?.id) return;
+    const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
+      setActiveOrders(orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled'));
+    });
+    return unsub;
+  }, [user?.id]);
 
-    loadOrders();
-    const unsubscribe = DataService.subscribe(loadOrders);
-    
-    return unsubscribe;
-  }, [user]);
+  // Subscribe to delivery location when order is on the way
+  useEffect(() => {
+    if (deliveryUnsubRef.current) { deliveryUnsubRef.current(); deliveryUnsubRef.current = null; }
+    if (!activeOrderId) return;
+    deliveryUnsubRef.current = FirebaseServiceV2.subscribeToDeliveryLocation(activeOrderId, (loc) => {
+      setDeliveryLocation(loc);
+    });
+    return () => { if (deliveryUnsubRef.current) deliveryUnsubRef.current(); };
+  }, [activeOrderId]);
 
   if (!user) {
     return <Auth />;
@@ -72,7 +167,7 @@ function AppContent() {
       const updatedBusiness = businesses.find(b => b.id === business.id);
       if (updatedBusiness) {
         setSelectedBusiness(updatedBusiness);
-        console.log('✅ [App] Menú cargado:', updatedBusiness.menu?.length || 0, 'items');
+        console.log('✅ [App] Negocio actualizado:', updatedBusiness.name, updatedBusiness.image ? 'con imagen' : 'sin imagen');
       } else {
         setSelectedBusiness(business);
       }
@@ -84,35 +179,37 @@ function AppContent() {
     }
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (!selectedBusiness || !user) return;
-
-    DataService.addOrder({
-      clientId: user.id,
-      clientName: user.name,
-      clientEmail: user.email,
-      clientPhone: user.phone || user.whatsapp,
-      businessId: selectedBusiness.id,
-      businessName: selectedBusiness.name,
-      businessEmail: selectedBusiness.email,
-      businessPhone: selectedBusiness.phone,
-      items: cart.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity
-      })),
-      subtotal: cartTotal,
-      deliveryFee: 50,
-      total: cartTotal + 50,
-      status: 'pending',
-      paymentMethod: 'cash',
-      deliveryAddress: 'Dirección del cliente',
-      deliveryInstructions: 'Instrucciones de entrega'
-    });
-    setView('tracking');
-    setIsCartOpen(false);
-    setCart([]);
+    try {
+      const orderData = {
+        clientId: user.id,
+        clientName: user.name,
+        clientEmail: user.email,
+        clientPhone: user.phone || user.whatsapp,
+        clientWhatsapp: user.whatsapp,
+        businessId: selectedBusiness.id,
+        businessName: selectedBusiness.name,
+        businessEmail: selectedBusiness.email || '',
+        businessPhone: selectedBusiness.phone || '',
+        items: cart.map(item => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })),
+        subtotal: cartTotal,
+        deliveryFee: 50,
+        total: cartTotal + 50,
+        status: 'pending',
+        paymentMethod: 'cash',
+        deliveryAddress: '',
+        deliveryInstructions: ''
+      };
+      const saved = await FirebaseServiceV2.addOrder(orderData);
+      setActiveOrderId(saved.id);
+      setView('tracking');
+      setIsCartOpen(false);
+      setCart([]);
+    } catch (err) {
+      console.error('Error al crear pedido:', err);
+      alert('Error al crear el pedido. Intenta nuevamente.');
+    }
   };
 
   // If user is not a client, show their specific view directly
@@ -156,20 +253,97 @@ function AppContent() {
               <h2 className="text-3xl font-black font-display tracking-tight">{selectedBusiness.name}</h2>
             </div>
 
-            <div className="relative h-64 rounded-[2.5rem] overflow-hidden shadow-xl">
-              <img src={selectedBusiness.image} alt={selectedBusiness.name} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-8">
-                <div className="flex items-center gap-4 text-white">
-                  <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl">
-                    <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                    <span className="font-bold">{selectedBusiness.rating}</span>
-                  </div>
-                  <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl">
-                    <Clock className="w-4 h-4" />
-                    <span className="font-bold">20-30 min</span>
+            {/* Perfil del Negocio - Vista Cliente */}
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-xl border border-gray-100">
+              <div className="flex flex-col items-center text-center space-y-4">
+                {/* Foto de perfil circular */}
+                <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
+                  <img 
+                    src={selectedBusiness.image} 
+                    alt={selectedBusiness.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/restaurant/400/400';
+                    }}
+                  />
+                </div>
+                
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900">{selectedBusiness.name}</h3>
+                  <div className="flex items-center justify-center gap-2 mt-2">
+                    <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+                    <span className="font-bold text-lg">{selectedBusiness.rating || 4.8}</span>
                   </div>
                 </div>
+
+                {/* Información del negocio */}
+                <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 text-left">
+                  {selectedBusiness.description && (
+                    <div>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Descripción</p>
+                      <p className="text-gray-700">{selectedBusiness.description}</p>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Dirección</p>
+                    <div className="flex items-center gap-2 text-gray-700">
+                      <MapPin className="w-4 h-4" />
+                      <span>{selectedBusiness.address || 'San Pedro de Macorís'}</span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Teléfono</p>
+                    <p className="text-gray-700">{selectedBusiness.phone || '809-XXX-XXXX'}</p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">WhatsApp</p>
+                    <p className="text-gray-700">{selectedBusiness.whatsapp || selectedBusiness.phone || '809-XXX-XXXX'}</p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Tiempo de Entrega</p>
+                    <div className="flex items-center gap-2 text-gray-700">
+                      <Clock className="w-4 h-4" />
+                      <span>{selectedBusiness.deliveryTime || '25-35 min'}</span>
+                    </div>
+                  </div>
+
+                  {selectedBusiness.cuisine && (
+                    <div>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Tipo de Comida</p>
+                      <p className="text-gray-700">{selectedBusiness.cuisine}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botón para ver menú */}
+                <button
+                  onClick={() => setView('menu')}
+                  className="mt-6 w-full bg-primary text-white py-4 rounded-2xl font-bold hover:bg-primary/90 transition-all"
+                >
+                  Ver Menú
+                </button>
               </div>
+            </div>
+          </motion.div>
+        )}
+
+        {view === 'menu' && selectedBusiness && (
+          <motion.div 
+            key="menu"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-8 px-4 lg:px-0"
+          >
+            <div className="flex items-center gap-4">
+              <button onClick={() => setView('restaurant')} className="p-2 hover:bg-white rounded-full transition-all shadow-sm">
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <h2 className="text-3xl font-black font-display tracking-tight">Menú - {selectedBusiness.name}</h2>
             </div>
 
             <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-black/5">
@@ -185,7 +359,7 @@ function AppContent() {
                       acc[category].push(item);
                       return acc;
                     }, {} as Record<string, any[]>)
-                  ).map(([category, items]) => (
+                  ).map(([category, items]: [string, any[]]) => (
                     <div key={category} className="space-y-4">
                       <div className="flex items-center gap-3 pb-2 border-b-2 border-primary/20">
                         <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
@@ -304,7 +478,7 @@ function AppContent() {
                                     {cart.find(i => i.id === item.id)?.quantity || 0}
                                   </span>
                                   <button 
-                                    onClick={() => addToCart(item)}
+                                    onClick={() => addToCart(item.id, item.name, item.price)}
                                     className="w-8 h-8 bg-primary text-white rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center group-hover:scale-110 disabled:opacity-50"
                                     disabled={item.available === false}
                                   >
@@ -345,60 +519,12 @@ function AppContent() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
           >
-            <div className="max-w-4xl mx-auto space-y-8 px-4 lg:px-0">
-              <div className="text-center">
-                <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-                <h2 className="text-3xl font-black font-display tracking-tight mb-2">¡Pedido Confirmado!</h2>
-                <p className="text-gray-400">Tu pedido está siendo preparado</p>
-              </div>
-
-              <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-black/5">
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="font-bold text-lg mb-4">Estado del Pedido</h3>
-                    <div className="space-y-3">
-                      {['pending', 'preparing', 'ready', 'delivered'].map((status, index) => (
-                        <div key={status} className="flex items-center gap-4">
-                          <div className={`w-8 h-8 rounded-full border-2 ${
-                            index === 0 ? 'border-primary bg-primary' : 'border-gray-200'
-                          }`}></div>
-                          <span className="font-medium capitalize">
-                            {status === 'pending' ? 'Pendiente' : 
-                             status === 'preparing' ? 'Preparando' :
-                             status === 'ready' ? 'Listo' : 'Entregado'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="font-bold text-lg mb-4">Detalles del Pedido</h3>
-                    <div className="space-y-2">
-                      {cart.map(item => (
-                        <div key={item.id} className="flex justify-between">
-                          <span>{item.quantity}x {item.name}</span>
-                          <span>RD$ {item.price * item.quantity}</span>
-                        </div>
-                      ))}
-                      <div className="pt-4 border-t">
-                        <div className="flex justify-between font-bold text-lg">
-                          <span>Total</span>
-                          <span>RD$ {cartTotal + 50}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <button 
-                onClick={() => setView('home')}
-                className="w-full bg-primary text-white py-4 rounded-2xl font-bold hover:bg-primary/90 transition-all"
-              >
-                Volver al Inicio
-              </button>
-            </div>
+            <TrackingView
+              orderId={activeOrderId}
+              deliveryLocation={deliveryLocation}
+              orders={activeOrders}
+              onBack={() => { setView('home'); setActiveOrderId(null); setDeliveryLocation(null); }}
+            />
           </motion.div>
         )}
 

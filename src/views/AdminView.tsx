@@ -24,17 +24,26 @@ import {
   Package,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  X,
+  Truck,
+  ChefHat,
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
 import DataService, { Business, Order } from '../services/DataService';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
+import EventService from '../services/EventService'; // Importar EventService
 import { User as AppUser } from '../types';
 
 const AdminView: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'orders' | 'users' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports'>('dashboard');
+  const [deliveryUsers, setDeliveryUsers] = useState<AppUser[]>([]);
+  const [orderFilter, setOrderFilter] = useState<string>('active');
+  const [newDelivery, setNewDelivery] = useState({ name: '', email: '', phone: '', whatsapp: '', password: '', vehicleType: '', cedula: '' });
+  const [showDeliveryPassword, setShowDeliveryPassword] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
   // Estados para los datos
@@ -53,37 +62,58 @@ const AdminView: React.FC = () => {
     password: ''
   });
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Estado para editar negocio
+  const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    whatsapp: '',
+    category: '',
+    address: '',
+    image: '',
+    password: ''
+  });
 
-  // Suscribirse a cambios en Firebase
+  // Suscribirse a cambios en Firebase en tiempo real
   useEffect(() => {
-    const loadData = async () => {
+    const loadStaticData = async () => {
       try {
-        const [businessesData, usersData, ordersData] = await Promise.all([
+        const [businessesData, usersData] = await Promise.all([
           FirebaseServiceV2.getBusinesses(),
-          FirebaseServiceV2.getUsers(),
-          FirebaseServiceV2.getOrders()
+          FirebaseServiceV2.getUsers()
         ]);
         setBusinesses(businessesData);
         setUsers(usersData);
-        setOrders(ordersData);
+        setDeliveryUsers(usersData.filter((u: AppUser) => u.role === 'delivery'));
       } catch (error) {
         console.error('Error cargando datos:', error);
-        // Fallback a DataService
         setBusinesses(DataService.getBusinesses());
         setUsers(DataService.getUsers());
-        setOrders(DataService.getOrders());
       }
     };
+    loadStaticData();
+    const intervalId = setInterval(loadStaticData, 60000);
 
-    loadData();
-    const unsubscribe = DataService.subscribe(loadData);
+    // Real-time orders subscription
+    const unsubOrders = FirebaseServiceV2.subscribeToOrders((ordersData) => {
+      setOrders(ordersData as Order[]);
+    });
+
+    const unsubLocal = DataService.subscribe(() => {});
     
-    return unsubscribe;
+    return () => {
+      clearInterval(intervalId);
+      unsubOrders();
+      unsubLocal();
+    };
   }, []);
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'create-business', label: 'Crear Negocio', icon: Plus },
+    { id: 'create-delivery', label: 'Crear Repartidor', icon: Truck },
     { id: 'businesses', label: 'Lista de Negocios', icon: Store },
     { id: 'orders', label: 'Ver Pedidos', icon: ShoppingCart },
     { id: 'users', label: 'Usuarios', icon: Users },
@@ -98,6 +128,33 @@ const AdminView: React.FC = () => {
     totalOrders: orders.length,
     totalRevenue: businesses.reduce((sum, b) => sum + b.totalRevenue, 0),
     pendingOrders: orders.filter(o => o.status === 'pending').length
+  };
+
+  const handleCreateDelivery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const generatedPassword = newDelivery.password || `DEL${Date.now().toString().slice(-6)}`;
+    try {
+      await FirebaseServiceV2.addUser({
+        name: newDelivery.name,
+        email: newDelivery.email,
+        password: generatedPassword,
+        phone: newDelivery.phone,
+        whatsapp: newDelivery.whatsapp,
+        role: 'delivery',
+        status: 'active',
+        vehicleType: newDelivery.vehicleType,
+        cedula: newDelivery.cedula
+      });
+      const updatedUsers = await FirebaseServiceV2.getUsers();
+      setUsers(updatedUsers);
+      setDeliveryUsers(updatedUsers.filter((u: AppUser) => u.role === 'delivery'));
+      alert(`✅ Repartidor creado exitosamente\n\n📧 Email: ${newDelivery.email}\n🔑 Contraseña: ${generatedPassword}\n\n⚠️ Guarda estas credenciales para que pueda iniciar sesión.`);
+      setNewDelivery({ name: '', email: '', phone: '', whatsapp: '', password: '', vehicleType: '', cedula: '' });
+      setActiveTab('users');
+    } catch (error: any) {
+      console.error('❌ Error creando repartidor:', error);
+      alert(`❌ Error al crear repartidor:\n${error.message || 'Error desconocido'}`);
+    }
   };
 
   const handleCreateBusiness = async (e: React.FormEvent) => {
@@ -157,18 +214,101 @@ const AdminView: React.FC = () => {
     }
   };
 
-  const handleDeleteBusiness = (id: string) => {
+  const handleDeleteBusiness = async (id: string) => {
     if (confirm('¿Estás seguro de eliminar este negocio?')) {
-      DataService.deleteBusiness(id);
+      try {
+        await FirebaseServiceV2.deleteBusiness(id);
+        // Actualizar lista
+        const updatedBusinesses = await FirebaseServiceV2.getBusinesses();
+        setBusinesses(updatedBusinesses);
+        alert('✅ Negocio eliminado exitosamente');
+      } catch (error) {
+        console.error('Error eliminando negocio:', error);
+        alert('❌ Error al eliminar el negocio');
+      }
     }
   };
 
-  const handleToggleBusinessStatus = (id: string) => {
+  const handleToggleBusinessStatus = async (id: string) => {
     const business = businesses.find(b => b.id === id);
     if (business) {
-      DataService.updateBusiness(id, { 
-        status: business.status === 'active' ? 'inactive' : 'active' 
-      });
+      try {
+        const newStatus = business.status === 'active' ? 'inactive' : 'active';
+        await FirebaseServiceV2.updateBusiness(id, { status: newStatus });
+        // Actualizar lista
+        const updatedBusinesses = await FirebaseServiceV2.getBusinesses();
+        setBusinesses(updatedBusinesses);
+      } catch (error) {
+        console.error('Error actualizando estado:', error);
+        alert('❌ Error al cambiar el estado');
+      }
+    }
+  };
+
+  // Funciones para editar negocio
+  const handleOpenEditModal = (business: Business) => {
+    setEditingBusiness(business);
+    setEditForm({
+      name: business.name || '',
+      email: business.email || '',
+      phone: business.phone || '',
+      whatsapp: business.whatsapp || '',
+      category: business.category || '',
+      address: business.address || '',
+      image: business.image || '',
+      password: '' // Dejar en blanco, solo cambiar si se ingresa nueva
+    });
+  };
+
+  const handleCloseEditModal = () => {
+    setEditingBusiness(null);
+    setEditForm({
+      name: '',
+      email: '',
+      phone: '',
+      whatsapp: '',
+      category: '',
+      address: '',
+      image: '',
+      password: ''
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBusiness) return;
+
+    try {
+      console.log('💾 Guardando cambios del negocio...');
+      
+      // Preparar datos a actualizar
+      const updateData: any = {
+        name: editForm.name,
+        email: editForm.email,
+        phone: editForm.phone,
+        whatsapp: editForm.whatsapp,
+        category: editForm.category,
+        address: editForm.address,
+        image: editForm.image
+      };
+
+      // Solo actualizar contraseña si se proporcionó una nueva
+      if (editForm.password && editForm.password.trim() !== '') {
+        updateData.password = editForm.password;
+      }
+
+      // Actualizar en Firebase
+      await FirebaseServiceV2.updateBusiness(editingBusiness.id, updateData);
+      
+      // Actualizar lista local
+      const updatedBusinesses = await FirebaseServiceV2.getBusinesses();
+      setBusinesses(updatedBusinesses);
+      
+      alert('✅ Negocio actualizado exitosamente');
+      handleCloseEditModal();
+    } catch (error: any) {
+      console.error('❌ Error actualizando negocio:', error);
+      alert(`❌ Error al actualizar: ${error.message || 'Error desconocido'}`);
     }
   };
 
@@ -288,6 +428,7 @@ const AdminView: React.FC = () => {
             <p className="text-gray-400 font-medium mt-1">
               {activeTab === 'dashboard' && 'Resumen general de la plataforma'}
               {activeTab === 'create-business' && 'Registra un nuevo negocio en la plataforma'}
+              {activeTab === 'create-delivery' && 'Registra un nuevo repartidor con acceso al panel'}
               {activeTab === 'businesses' && 'Gestiona todos los negocios activos'}
               {activeTab === 'orders' && 'Monitorea todos los pedidos en tiempo real'}
               {activeTab === 'users' && 'Administra todos los usuarios registrados'}
@@ -550,6 +691,116 @@ const AdminView: React.FC = () => {
             </motion.div>
           )}
 
+          {/* Create Delivery */}
+          {activeTab === 'create-delivery' && (
+            <motion.div key="create-delivery" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+              <div className="max-w-2xl">
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="bg-emerald-100 p-3 rounded-2xl">
+                      <Truck className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black font-display tracking-tight">Crear Nuevo Repartidor</h3>
+                      <p className="text-sm text-gray-500">El repartidor podrá iniciar sesión con estas credenciales</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleCreateDelivery} className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Nombre Completo *</label>
+                        <input type="text" required value={newDelivery.name}
+                          onChange={(e) => setNewDelivery({...newDelivery, name: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          placeholder="Ej. Juan Pérez" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Cédula de Identidad</label>
+                        <input type="text" value={newDelivery.cedula}
+                          onChange={(e) => setNewDelivery({...newDelivery, cedula: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          placeholder="000-0000000-0" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Email *</label>
+                        <input type="email" required value={newDelivery.email}
+                          onChange={(e) => setNewDelivery({...newDelivery, email: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          placeholder="repartidor@email.com" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Teléfono *</label>
+                        <input type="tel" required value={newDelivery.phone}
+                          onChange={(e) => setNewDelivery({...newDelivery, phone: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          placeholder="809-123-4567" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">WhatsApp *</label>
+                        <input type="tel" required value={newDelivery.whatsapp}
+                          onChange={(e) => setNewDelivery({...newDelivery, whatsapp: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          placeholder="809-123-4567" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Tipo de Vehículo</label>
+                        <select value={newDelivery.vehicleType}
+                          onChange={(e) => setNewDelivery({...newDelivery, vehicleType: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                          <option value="">Seleccionar...</option>
+                          <option value="moto">🏍️ Motocicleta</option>
+                          <option value="bicicleta">🚲 Bicicleta</option>
+                          <option value="carro">🚗 Carro</option>
+                          <option value="a_pie">🚶 A pie</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">
+                        Contraseña de Acceso
+                        <span className="text-xs text-gray-400 ml-2">(Opcional — se genera automáticamente)</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showDeliveryPassword ? 'text' : 'password'}
+                          value={newDelivery.password}
+                          onChange={(e) => setNewDelivery({...newDelivery, password: e.target.value})}
+                          className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                          placeholder="Dejar en blanco para generar automáticamente" />
+                        <button type="button" onClick={() => setShowDeliveryPassword(p => !p)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showDeliveryPassword ? '👁️' : '👁️\u200d🗨️'}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1.5">💡 Si no ingresas una contraseña, se generará una automáticamente al crear el repartidor.</p>
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3">
+                      <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-blue-700">
+                        <p className="font-bold mb-1">¿Cómo funciona?</p>
+                        <p>El repartidor inicia sesión con su email y contraseña. Verá los pedidos listos asignados a él y podrá aceptarlos, ver la ruta en el mapa y marcarlos como entregados.</p>
+                      </div>
+                    </div>
+
+                    <button type="submit"
+                      className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
+                      <Truck className="w-5 h-5" /> Crear Repartidor
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* Business List */}
           {activeTab === 'businesses' && (
             <motion.div
@@ -606,7 +857,10 @@ const AdminView: React.FC = () => {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              <button className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all">
+                              <button 
+                                onClick={() => handleOpenEditModal(business)}
+                                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
+                              >
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
@@ -628,60 +882,125 @@ const AdminView: React.FC = () => {
 
           {/* Orders */}
           {activeTab === 'orders' && (
-            <motion.div
-              key="orders"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-            >
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-100">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Pedido</th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Cliente</th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Negocio</th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Total</th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Estado</th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredOrders.map((order) => (
-                        <tr key={order.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4">
-                            <p className="font-medium text-gray-900">{order.id}</p>
-                            <p className="text-sm text-gray-400">{order.items?.length || 0} items</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="font-medium text-gray-900">{order.customerName}</p>
-                            <p className="text-sm text-gray-400">{order.customerEmail}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="font-medium text-gray-900">{order.businessName}</p>
-                            <p className="text-sm text-gray-400">{order.businessEmail}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="font-medium text-gray-900">RD$ {order.total}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(order.status)}`}>
-                              {getStatusIcon(order.status)}
-                              {order.status === 'pending' ? 'Pendiente' : 
-                               order.status === 'preparing' ? 'Preparando' :
-                               order.status === 'ready' ? 'Listo' :
-                               order.status === 'picked_up' ? 'En Camino' : 'Entregado'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="text-sm text-gray-400">{new Date(order.createdAt).toLocaleDateString()}</p>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            <motion.div key="orders" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+              {/* Filtros */}
+              <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+                {[
+                  { key: 'active', label: 'Activos' },
+                  { key: 'pending', label: 'Pendientes' },
+                  { key: 'ready', label: 'Listos — Asignar' },
+                  { key: 'on_the_way', label: 'En Camino' },
+                  { key: 'done', label: 'Finalizados' },
+                  { key: 'all', label: 'Todos' },
+                ].map(f => {
+                  const count = f.key === 'active' ? orders.filter(o => !['delivered','cancelled'].includes(o.status)).length
+                    : f.key === 'pending' ? orders.filter(o => o.status === 'pending').length
+                    : f.key === 'ready' ? orders.filter(o => o.status === 'ready').length
+                    : f.key === 'on_the_way' ? orders.filter(o => o.status === 'on_the_way').length
+                    : f.key === 'done' ? orders.filter(o => ['delivered','cancelled'].includes(o.status)).length
+                    : orders.length;
+                  return (
+                    <button key={f.key} onClick={() => setOrderFilter(f.key)}
+                      className={`flex-shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${orderFilter === f.key ? 'bg-primary text-white shadow' : 'bg-white text-gray-600 border border-gray-200'}`}>
+                      {f.label}
+                      {count > 0 && <span className={`text-xs rounded-full px-1.5 py-0.5 ${orderFilter === f.key ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-600'}`}>{count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-3">
+                {orders.filter(o => {
+                  if (orderFilter === 'active') return !['delivered','cancelled'].includes(o.status);
+                  if (orderFilter === 'pending') return o.status === 'pending';
+                  if (orderFilter === 'ready') return o.status === 'ready';
+                  if (orderFilter === 'on_the_way') return o.status === 'on_the_way' || o.status === 'picked_up';
+                  if (orderFilter === 'done') return ['delivered','cancelled'].includes(o.status);
+                  return true;
+                }).map(order => {
+                  const STATUS_LABELS: Record<string, string> = { pending: 'Pendiente', accepted: 'Aceptado', preparing: 'Preparando', ready: 'Listo', on_the_way: 'En Camino', picked_up: 'Recogido', delivered: 'Entregado', cancelled: 'Cancelado' };
+                  const STATUS_COLORS: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-700', accepted: 'bg-blue-100 text-blue-700', preparing: 'bg-orange-100 text-orange-700', ready: 'bg-purple-100 text-purple-700', on_the_way: 'bg-indigo-100 text-indigo-700', picked_up: 'bg-indigo-100 text-indigo-700', delivered: 'bg-emerald-100 text-emerald-700', cancelled: 'bg-red-100 text-red-700' };
+                  return (
+                    <div key={order.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                          <p className="font-bold text-gray-900">#{order.id?.slice(-8).toUpperCase()}</p>
+                          <p className="text-xs text-gray-500">{order.businessName} · {new Date(order.createdAt).toLocaleString('es-DO')}</p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-700'}`}>
+                          {STATUS_LABELS[order.status] || order.status}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-xs text-gray-400 font-bold uppercase mb-1">Cliente</p>
+                          <p className="font-medium text-gray-900">{(order as any).clientName || (order as any).customerName || 'N/A'}</p>
+                          <p className="text-gray-500 text-xs">{(order as any).clientEmail || (order as any).customerEmail || ''}</p>
+                        </div>
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-xs text-gray-400 font-bold uppercase mb-1">Total</p>
+                          <p className="font-black text-lg text-emerald-600">RD$ {order.total?.toFixed(0)}</p>
+                          <p className="text-xs text-gray-500">{order.items?.length || 0} items</p>
+                        </div>
+                      </div>
+
+                      {/* Assign delivery for ready orders */}
+                      {order.status === 'ready' && (
+                        <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                          <p className="text-sm font-bold text-purple-800 mb-3 flex items-center gap-2">
+                            <UserCheck className="w-4 h-4" /> Asignar Repartidor
+                          </p>
+                          <div className="flex gap-2">
+                            <select
+                              className="flex-1 text-sm border border-purple-200 rounded-xl px-3 py-2 bg-white font-medium"
+                              defaultValue=""
+                              onChange={async (e) => {
+                                const deliveryId = e.target.value;
+                                if (!deliveryId) return;
+                                const deliveryUser = deliveryUsers.find(u => u.id === deliveryId);
+                                try {
+                                  await FirebaseServiceV2.updateOrder(order.id, {
+                                    status: 'on_the_way',
+                                    deliveryId,
+                                    deliveryName: deliveryUser?.name || 'Repartidor'
+                                  });
+                                } catch (err) { console.error('Error asignando repartidor:', err); }
+                              }}
+                            >
+                              <option value="">Seleccionar repartidor...</option>
+                              {deliveryUsers.map(u => (
+                                <option key={u.id} value={u.id}>{u.name} — {u.phone || u.whatsapp}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {deliveryUsers.length === 0 && (
+                            <p className="text-xs text-purple-600 mt-2">No hay repartidores registrados. Crea un usuario con rol "delivery".</p>
+                          )}
+                        </div>
+                      )}
+
+                      {order.status === 'on_the_way' && (
+                        <div className="flex items-center gap-2 bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+                          <Truck className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                          <span className="text-sm font-bold text-indigo-700">Repartidor: {(order as any).deliveryName || 'En camino'}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {orders.filter(o => {
+                  if (orderFilter === 'active') return !['delivered','cancelled'].includes(o.status);
+                  if (orderFilter === 'pending') return o.status === 'pending';
+                  if (orderFilter === 'ready') return o.status === 'ready';
+                  if (orderFilter === 'on_the_way') return o.status === 'on_the_way' || o.status === 'picked_up';
+                  if (orderFilter === 'done') return ['delivered','cancelled'].includes(o.status);
+                  return true;
+                }).length === 0 && (
+                  <div className="bg-white p-12 rounded-2xl border border-dashed border-gray-200 text-center">
+                    <Package className="w-14 h-14 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-400 font-bold">No hay pedidos en esta categoría</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -836,6 +1155,144 @@ const AdminView: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Modal de Edición de Negocio */}
+        {editingBusiness && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-2xl font-black font-display tracking-tight">Editar Negocio</h3>
+                  <button
+                    onClick={handleCloseEditModal}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveEdit} className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Nombre del Negocio</label>
+                      <input
+                        type="text"
+                        required
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Email</label>
+                      <input
+                        type="email"
+                        required
+                        value={editForm.email}
+                        onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Teléfono</label>
+                      <input
+                        type="tel"
+                        value={editForm.phone}
+                        onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">WhatsApp</label>
+                      <input
+                        type="tel"
+                        value={editForm.whatsapp}
+                        onChange={(e) => setEditForm({...editForm, whatsapp: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Categoría</label>
+                      <select
+                        value={editForm.category}
+                        onChange={(e) => setEditForm({...editForm, category: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      >
+                        <option value="">Seleccionar categoría</option>
+                        <option value="Comida Rápida">Comida Rápida</option>
+                        <option value="Pizzería">Pizzería</option>
+                        <option value="Comida Dominicana">Comida Dominicana</option>
+                        <option value="Postres">Postres</option>
+                        <option value="Bebidas">Bebidas</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Dirección</label>
+                      <input
+                        type="text"
+                        value={editForm.address}
+                        onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">URL de Imagen</label>
+                    <input
+                      type="url"
+                      value={editForm.image}
+                      onChange={(e) => setEditForm({...editForm, image: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="https://ejemplo.com/imagen.jpg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      Nueva Contraseña
+                      <span className="text-xs text-gray-400 ml-2">(Dejar en blanco para mantener actual)</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={editForm.password}
+                      onChange={(e) => setEditForm({...editForm, password: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="Ingresar solo si deseas cambiarla"
+                    />
+                  </div>
+
+                  <div className="flex gap-4 pt-4">
+                    <button
+                      type="submit"
+                      className="flex-1 bg-primary text-white py-4 rounded-2xl font-bold hover:bg-primary/90 transition-all"
+                    >
+                      💾 Guardar Cambios
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCloseEditModal}
+                      className="flex-1 bg-gray-100 text-gray-700 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </main>
     </div>
   );
