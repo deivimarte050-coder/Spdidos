@@ -41,13 +41,13 @@ function AppContent() {
     return <Auth />;
   }
 
-  const addToCart = (item: CartItem) => {
+  const addToCart = (id: string, name: string, price: number) => {
     setCart(prev => {
-      const existing = prev.find(i => i.id === item.id);
+      const existing = prev.find(i => i.id === id);
       if (existing) {
-        return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+        return prev.map(i => i.id === id ? { ...i, quantity: i.quantity + 1 } : i);
       }
-      return [...prev, { ...item, quantity: 1 }];
+      return [...prev, { id, name, price, quantity: 1 }];
     });
   };
 
@@ -72,11 +72,10 @@ function AppContent() {
     if (!selectedBusiness || !user) return;
 
     DataService.addOrder({
-      customerId: user.id,
-      customerName: user.name,
-      customerEmail: user.email,
-      customerPhone: user.phone || user.whatsapp,
-      customerAddress: 'Dirección del cliente',
+      clientId: user.id,
+      clientName: user.name,
+      clientEmail: user.email,
+      clientPhone: user.phone || user.whatsapp,
       businessId: selectedBusiness.id,
       businessName: selectedBusiness.name,
       businessEmail: selectedBusiness.email,
@@ -92,7 +91,7 @@ function AppContent() {
       total: cartTotal + 50,
       status: 'pending',
       paymentMethod: 'cash',
-      deliveryAddress: 'Dirección de entrega',
+      deliveryAddress: 'Dirección del cliente',
       deliveryInstructions: 'Instrucciones de entrega'
     });
     setView('tracking');
@@ -199,22 +198,46 @@ function AppContent() {
                                 alt={item.name}
                                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 cursor-pointer"
                                 onClick={() => {
-                                  // Crear modal para ver imagen en grande
+                                  // Crear modal seguro para ver imagen
                                   const modal = document.createElement('div');
-                                  modal.className = 'fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 animate-fade-in';
-                                  modal.onclick = () => modal.remove();
-                                  modal.innerHTML = `
-                                    <div class="relative max-w-4xl max-h-full">
-                                      <img src="${item.image || 'https://picsum.photos/seed/food/800/600'}" 
-                                           alt="${item.name}" 
-                                           class="max-w-full max-h-full object-contain rounded-lg">
-                                      <button class="absolute top-4 right-4 bg-white/20 backdrop-blur-sm text-white p-2 rounded-full hover:bg-white/30 transition-all">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                        </svg>
-                                      </button>
-                                    </div>
+                                  modal.style.cssText = `
+                                    position: fixed;
+                                    top: 0;
+                                    left: 0;
+                                    width: 100%;
+                                    height: 100%;
+                                    background: rgba(0, 0, 0, 0.9);
+                                    z-index: 9999;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
                                   `;
+                                  
+                                  const img = document.createElement('img');
+                                  img.src = item.image || 'https://picsum.photos/seed/food/800/600';
+                                  img.alt = item.name;
+                                  img.style.cssText = `
+                                    max-width: 90vw;
+                                    max-height: 90vh;
+                                    object-fit: contain;
+                                  `;
+                                  
+                                  const closeBtn = document.createElement('button');
+                                  closeBtn.textContent = '✕ Cerrar';
+                                  closeBtn.style.cssText = `
+                                    position: absolute;
+                                    top: 20px;
+                                    right: 20px;
+                                    background: white;
+                                    padding: 8px 16px;
+                                    border-radius: 8px;
+                                    cursor: pointer;
+                                    z-index: 10000;
+                                  `;
+                                  closeBtn.onclick = () => modal.remove();
+                                  
+                                  modal.appendChild(img);
+                                  modal.appendChild(closeBtn);
                                   document.body.appendChild(modal);
                                 }}
                               />
