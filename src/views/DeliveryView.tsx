@@ -11,39 +11,91 @@ import 'leaflet-routing-machine';
 import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
 import { SPM_CENTER } from '../constants';
 
+// Auto-follow the delivery person on the map
+const MapFollower: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom(), { animate: true, duration: 1 });
+  }, [center[0], center[1]]);
+  return null;
+};
+
+// Routing control — updates waypoints without recreating the control
+const RoutingControl: React.FC<{ from: [number, number]; to: [number, number] }> = ({ from, to }) => {
+  const map = useMap();
+  const ctrlRef = useRef<any>(null);
+
+  // Create control once
+  useEffect(() => {
+    if (!(L as any).Routing) return;
+    try {
+      ctrlRef.current = (L as any).Routing.control({
+        waypoints: [L.latLng(from[0], from[1]), L.latLng(to[0], to[1])],
+        routeWhileDragging: false,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        show: false,
+        createMarker: () => null,
+        fitSelectedRoutes: false,
+        lineOptions: {
+          styles: [
+            { color: '#6b21a8', weight: 9, opacity: 0.25 },
+            { color: '#4f46e5', weight: 6, opacity: 1 }
+          ],
+          extendToWaypoints: true,
+          missingRouteTolerance: 0
+        }
+      }).addTo(map);
+    } catch (e) {}
+    return () => {
+      if (ctrlRef.current) {
+        try { map.removeControl(ctrlRef.current); } catch {}
+        ctrlRef.current = null;
+      }
+    };
+  }, [map]);
+
+  // Update waypoints smoothly when position changes
+  useEffect(() => {
+    if (!ctrlRef.current) return;
+    try {
+      ctrlRef.current.setWaypoints([L.latLng(from[0], from[1]), L.latLng(to[0], to[1])]);
+    } catch {}
+  }, [from[0], from[1], to[0], to[1]]);
+
+  return null;
+};
+
 // Mapa de seguimiento para repartidor
 const DeliveryTrackingMap: React.FC<{ deliveryLoc: [number, number]; clientLoc?: [number, number] }> = ({ deliveryLoc, clientLoc }) => {
-  const routingRef = useRef<any>(null);
-
-  const RoutingLayer = () => {
-    const map = useMap();
-    useEffect(() => {
-      if (!clientLoc || !(L as any).Routing) return;
-      try {
-        if (routingRef.current) { try { map.removeControl(routingRef.current); } catch {} }
-        routingRef.current = (L as any).Routing.control({
-          waypoints: [L.latLng(deliveryLoc[0], deliveryLoc[1]), L.latLng(clientLoc[0], clientLoc[1])],
-          routeWhileDragging: false, addWaypoints: false, draggableWaypoints: false,
-          show: false, createMarker: () => null,
-          lineOptions: { styles: [{ color: '#3b82f6', weight: 5, opacity: 0.8 }], extendToWaypoints: true, missingRouteTolerance: 0 }
-        }).addTo(map);
-      } catch (e) {}
-      return () => { if (routingRef.current) { try { map.removeControl(routingRef.current); } catch {} routingRef.current = null; } };
-    }, [map, deliveryLoc[0], deliveryLoc[1], clientLoc?.[0], clientLoc?.[1]]);
-    return null;
-  };
-
   return (
-    <div className="h-[280px] rounded-2xl overflow-hidden border border-gray-100">
-      <MapContainer center={deliveryLoc} zoom={15} className="h-full w-full" scrollWheelZoom={false}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <RoutingLayer />
-        <Marker position={deliveryLoc} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png', iconSize: [36, 36], iconAnchor: [18, 36] })}>
+    <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: 340 }}>
+      <MapContainer center={deliveryLoc} zoom={16} className="h-full w-full" scrollWheelZoom={false} zoomControl={false}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
+        <MapFollower center={deliveryLoc} />
+        {clientLoc && <RoutingControl from={deliveryLoc} to={clientLoc} />}
+        {/* Delivery person marker */}
+        <Marker position={deliveryLoc} icon={L.divIcon({
+          className: '',
+          html: `<div style="width:38px;height:38px;background:#4f46e5;border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(79,70,229,0.5)">
+                   <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                 </div>`,
+          iconSize: [38, 38],
+          iconAnchor: [19, 19]
+        })}>
           <Popup>Tu ubicación</Popup>
         </Marker>
+        {/* Client marker */}
         {clientLoc && (
-          <Marker position={clientLoc} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/1216/1216844.png', iconSize: [32, 32], iconAnchor: [16, 32] })}>
-            <Popup>Entrega aquí</Popup>
+          <Marker position={clientLoc} icon={L.divIcon({
+            className: '',
+            html: `<div style="display:flex;flex-direction:column;align-items:center">
+                     <div style="width:36px;height:36px;background:#dc2626;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(220,38,38,0.5)"></div>
+                   </div>`,
+            iconSize: [36, 44],
+            iconAnchor: [18, 44]
+          })}>
+            <Popup>📦 Entrega aquí</Popup>
           </Marker>
         )}
       </MapContainer>
@@ -144,8 +196,14 @@ const DeliveryView: React.FC = () => {
   const getClientCoords = (): { lat: number; lng: number } | null => {
     if (clientLiveLocation) return clientLiveLocation;
     const ol = (myOrder as any)?.clientLocation;
-    if (ol?.lat) return ol;
+    if (ol?.lat) return { lat: ol.lat, lng: ol.lng };
     return null;
+  };
+
+  // Normalize clientLocation to [lat, lng] tuple for the map
+  const getClientLocTuple = (): [number, number] | undefined => {
+    const c = getClientCoords();
+    return c ? [c.lat, c.lng] : undefined;
   };
 
   const openInWaze = () => {
@@ -217,7 +275,7 @@ const DeliveryView: React.FC = () => {
                 <button onClick={() => setIsNavigating(false)} className="bg-white/20 px-3 py-1.5 rounded-lg font-bold text-sm">Salir</button>
               </div>
               <div className="flex-1">
-                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={clientLiveLocation ? [clientLiveLocation.lat, clientLiveLocation.lng] : (myOrder as any).clientLocation} />
+                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={getClientLocTuple()} />
               </div>
               <div className="p-4 bg-white border-t border-gray-100 grid grid-cols-3 gap-2">
                 <button onClick={openInGoogleMaps} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5">
@@ -258,7 +316,7 @@ const DeliveryView: React.FC = () => {
                   </button>
                 </div>
 
-                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={clientLiveLocation ? [clientLiveLocation.lat, clientLiveLocation.lng] : (myOrder as any).clientLocation} />
+                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={getClientLocTuple()} />
 
                 {/* Live location badge */}
                 {clientLiveLocation && (
