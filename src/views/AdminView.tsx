@@ -29,6 +29,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
 import DataService, { Business, Order } from '../services/DataService';
+import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { User as AppUser } from '../types';
 
 const AdminView: React.FC = () => {
@@ -53,12 +54,25 @@ const AdminView: React.FC = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
 
-  // Suscribirse a cambios en el DataService
+  // Suscribirse a cambios en Firebase
   useEffect(() => {
-    const loadData = () => {
-      setBusinesses(DataService.getBusinesses());
-      setUsers(DataService.getUsers());
-      setOrders(DataService.getOrders());
+    const loadData = async () => {
+      try {
+        const [businessesData, usersData, ordersData] = await Promise.all([
+          FirebaseServiceV2.getBusinesses(),
+          FirebaseServiceV2.getUsers(),
+          FirebaseServiceV2.getOrders()
+        ]);
+        setBusinesses(businessesData);
+        setUsers(usersData);
+        setOrders(ordersData);
+      } catch (error) {
+        console.error('Error cargando datos:', error);
+        // Fallback a DataService
+        setBusinesses(DataService.getBusinesses());
+        setUsers(DataService.getUsers());
+        setOrders(DataService.getOrders());
+      }
     };
 
     loadData();
@@ -86,7 +100,7 @@ const AdminView: React.FC = () => {
     pendingOrders: orders.filter(o => o.status === 'pending').length
   };
 
-  const handleCreateBusiness = (e: React.FormEvent) => {
+  const handleCreateBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Generar contraseña automática si no se proporciona
@@ -95,16 +109,31 @@ const AdminView: React.FC = () => {
     // Crear negocio con la contraseña
     const businessWithPassword = {
       ...newBusiness,
-      password: generatedPassword
+      password: generatedPassword,
+      status: 'active',
+      rating: 4.0,
+      totalOrders: 0,
+      totalRevenue: 0,
+      createdAt: new Date().toISOString()
     };
     
-    DataService.addBusiness(businessWithPassword);
-    
-    // Mostrar contraseña generada
-    alert(`✅ Negocio creado exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\nGuarda estas credenciales para el acceso del negocio.`);
-    
-    setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', image: '', password: '' });
-    setActiveTab('businesses');
+    try {
+      // Guardar en Firebase
+      await FirebaseServiceV2.addBusiness(businessWithPassword);
+      console.log('✅ Negocio guardado en Firebase');
+      
+      // Actualizar lista local
+      const updatedBusinesses = await FirebaseServiceV2.getBusinesses();
+      setBusinesses(updatedBusinesses);
+      
+      alert(`✅ Negocio creado exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\nGuarda estas credenciales para el acceso del negocio.`);
+      
+      setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', image: '', password: '' });
+      setActiveTab('businesses');
+    } catch (error) {
+      console.error('❌ Error guardando negocio:', error);
+      alert('❌ Error al crear el negocio. Intenta de nuevo.');
+    }
   };
 
   const handleDeleteBusiness = (id: string) => {
