@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
-import DataService from '../services/DataService';
+import HybridDataService from '../services/HybridDataService';
 
 interface AuthContextType {
   user: User | null;
@@ -31,7 +31,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Inicializar datos de ejemplo
       console.log('🔄 Inicializando datos de ejemplo...');
-      DataService.initializeSampleData();
+      HybridDataService.initializeSampleData();
       console.log('✅ Datos inicializados');
     } catch (err) {
       console.error('❌ Error en inicialización:', err);
@@ -62,14 +62,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Buscar usuario en DataService con timeout
-      console.log('🔍 Buscando usuario en DataService...');
+      // Buscar usuario en HybridDataService con timeout
+      console.log('🔍 Buscando usuario en HybridDataService...');
       
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Tiempo de espera agotado')), 5000);
       });
       
-      const usersPromise = DataService.getUsers();
+      const usersPromise = HybridDataService.getUsers();
       
       const users = await Promise.race([usersPromise, timeoutPromise]) as any[];
       
@@ -109,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTimeout(() => reject(new Error('Tiempo de espera agotado')), 5000);
       });
       
-      const usersPromise = DataService.getUsers();
+      const usersPromise = HybridDataService.getUsers();
       const users = await Promise.race([usersPromise, timeoutPromise]) as any[];
       
       if (users.some(u => u.email === userData.email)) {
@@ -119,7 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('➕ Agregando nuevo usuario...');
       
-      const addUserPromise = DataService.addUser(userData);
+      const addUserPromise = HybridDataService.addUser(userData);
       const newUser = await Promise.race([addUserPromise, timeoutPromise]);
 
       console.log('✅ Usuario registrado:', (newUser as any).email);
