@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Package, MapPin, CheckCircle2, Navigation, Store, ArrowUpRight, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign } from 'lucide-react';
+import { Package, MapPin, CheckCircle2, Navigation, Store, ArrowUpRight, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map } from 'lucide-react';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { Order } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -71,6 +71,7 @@ const DeliveryView: React.FC = () => {
   const [isAvailable, setIsAvailable] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const [myLocation, setMyLocation] = useState<[number, number]>(SPM_CENTER);
+  const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Subscribe to available (ready) orders
@@ -83,6 +84,18 @@ const DeliveryView: React.FC = () => {
     });
     return unsub;
   }, [user?.id]);
+
+  // Subscribe to client real-time location when on active delivery
+  useEffect(() => {
+    if (!myOrder?.id) return;
+    // Try from order first
+    const ol = (myOrder as any).clientLocation;
+    if (ol?.lat) setClientLiveLocation(ol);
+    const unsub = FirebaseServiceV2.subscribeToClientLocation(myOrder.id, (loc) => {
+      if (loc) setClientLiveLocation(loc);
+    });
+    return unsub;
+  }, [myOrder?.id]);
 
   // Get GPS position
   useEffect(() => {
@@ -128,12 +141,28 @@ const DeliveryView: React.FC = () => {
     } catch (err) { console.error('Error completando pedido:', err); }
   };
 
+  const getClientCoords = (): { lat: number; lng: number } | null => {
+    if (clientLiveLocation) return clientLiveLocation;
+    const ol = (myOrder as any)?.clientLocation;
+    if (ol?.lat) return ol;
+    return null;
+  };
+
   const openInWaze = () => {
-    if (myOrder?.clientLocation) {
-      const [lat, lon] = myOrder.clientLocation;
-      window.open(`https://www.waze.com/ul?ll=${lat},${lon}&navigate=yes`, '_blank');
+    const coords = getClientCoords();
+    if (coords) {
+      window.open(`https://waze.com/ul?ll=${coords.lat},${coords.lng}&navigate=yes`, '_blank');
     } else if (myOrder?.deliveryAddress) {
       window.open(`https://www.waze.com/ul?q=${encodeURIComponent(myOrder.deliveryAddress)}&navigate=yes`, '_blank');
+    }
+  };
+
+  const openInGoogleMaps = () => {
+    const coords = getClientCoords();
+    if (coords) {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`, '_blank');
+    } else if (myOrder?.deliveryAddress) {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(myOrder.deliveryAddress)}`, '_blank');
     }
   };
 
@@ -188,14 +217,17 @@ const DeliveryView: React.FC = () => {
                 <button onClick={() => setIsNavigating(false)} className="bg-white/20 px-3 py-1.5 rounded-lg font-bold text-sm">Salir</button>
               </div>
               <div className="flex-1">
-                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={myOrder.clientLocation} />
+                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={clientLiveLocation ? [clientLiveLocation.lat, clientLiveLocation.lng] : (myOrder as any).clientLocation} />
               </div>
-              <div className="p-4 bg-white border-t border-gray-100 flex gap-3">
-                <button onClick={openInWaze} className="flex-1 bg-[#33ccff] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2">
-                  <img src="https://cdn-icons-png.flaticon.com/512/732/732258.png" className="w-5 h-5" alt="Waze" /> Waze
+              <div className="p-4 bg-white border-t border-gray-100 grid grid-cols-3 gap-2">
+                <button onClick={openInGoogleMaps} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5">
+                  <Map className="w-4 h-4" /> Google
                 </button>
-                <button onClick={handleComplete} className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2">
-                  <CheckCircle2 className="w-5 h-5" /> Entregado
+                <button onClick={openInWaze} className="bg-[#33ccff] text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5">
+                  <img src="https://cdn-icons-png.flaticon.com/512/732/732258.png" className="w-4 h-4" alt="Waze" /> Waze
+                </button>
+                <button onClick={handleComplete} className="bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" /> Entregado
                 </button>
               </div>
             </div>
@@ -226,21 +258,38 @@ const DeliveryView: React.FC = () => {
                   </button>
                 </div>
 
-                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={myOrder.clientLocation} />
+                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={clientLiveLocation ? [clientLiveLocation.lat, clientLiveLocation.lng] : (myOrder as any).clientLocation} />
 
-                <div className="grid grid-cols-3 gap-2">
+                {/* Live location badge */}
+                {clientLiveLocation && (
+                  <div className="flex items-center gap-2 p-2.5 bg-blue-50 rounded-xl border border-blue-100">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
+                    <span className="text-xs font-bold text-blue-700">Ubicación del cliente en tiempo real</span>
+                    <span className="ml-auto text-xs text-blue-500">{clientLiveLocation.lat.toFixed(4)}, {clientLiveLocation.lng.toFixed(4)}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={openInGoogleMaps}
+                    className="flex items-center justify-center gap-2 p-3 bg-blue-600 text-white rounded-xl font-bold text-sm">
+                    <Map className="w-4 h-4" /> Google Maps
+                  </button>
+                  <button onClick={openInWaze}
+                    className="flex items-center justify-center gap-2 p-3 bg-[#33ccff] text-white rounded-xl font-bold text-sm">
+                    <img src="https://cdn-icons-png.flaticon.com/512/732/732258.png" className="w-4 h-4" alt="Waze" /> Waze
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
                   {myOrder.clientWhatsapp && (
                     <a href={`https://wa.me/${myOrder.clientWhatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
-                      className="flex flex-col items-center gap-1 p-3 bg-emerald-50 rounded-xl text-emerald-600 font-bold text-xs">
-                      <MessageCircle className="w-5 h-5" /> WhatsApp
+                      className="flex items-center justify-center gap-2 p-3 bg-emerald-50 rounded-xl text-emerald-600 font-bold text-sm">
+                      <MessageCircle className="w-4 h-4" /> WhatsApp
                     </a>
                   )}
-                  <button onClick={openInWaze} className="flex flex-col items-center gap-1 p-3 bg-blue-50 rounded-xl text-blue-600 font-bold text-xs col-span-1">
-                    <img src="https://cdn-icons-png.flaticon.com/512/732/732258.png" className="w-5 h-5" alt="Waze" /> Waze
-                  </button>
                   <button onClick={handleComplete}
-                    className="flex flex-col items-center gap-1 p-3 bg-emerald-600 rounded-xl text-white font-bold text-xs col-span-1">
-                    <CheckCircle2 className="w-5 h-5" /> Entregado
+                    className={`flex items-center justify-center gap-2 p-3 bg-emerald-600 text-white rounded-xl font-bold text-sm ${myOrder.clientWhatsapp ? '' : 'col-span-2'}`}>
+                    <CheckCircle2 className="w-4 h-4" /> Marcar Entregado
                   </button>
                 </div>
               </div>

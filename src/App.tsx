@@ -114,6 +114,7 @@ function AppContent() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
+  const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -131,6 +132,20 @@ function AppContent() {
       setDeliveryLocation(loc);
     });
     return () => { if (deliveryUnsubRef.current) deliveryUnsubRef.current(); };
+  }, [activeOrderId]);
+
+  // Keep client GPS updated while order is active (every 30s)
+  useEffect(() => {
+    if (clientGpsIntervalRef.current) { clearInterval(clientGpsIntervalRef.current); clientGpsIntervalRef.current = null; }
+    if (!activeOrderId || !navigator.geolocation) return;
+    const sendLocation = () => {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        FirebaseServiceV2.updateClientLocation(activeOrderId, pos.coords.latitude, pos.coords.longitude);
+      }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
+    };
+    sendLocation();
+    clientGpsIntervalRef.current = setInterval(sendLocation, 30000);
+    return () => { if (clientGpsIntervalRef.current) clearInterval(clientGpsIntervalRef.current); };
   }, [activeOrderId]);
 
   if (!user) {
@@ -179,10 +194,22 @@ function AppContent() {
     }
   };
 
+  const getClientGPS = (): Promise<{ lat: number; lng: number } | null> =>
+    new Promise((resolve) => {
+      if (!navigator.geolocation) { resolve(null); return; }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      );
+    });
+
   const handleCheckout = async () => {
     if (!selectedBusiness || !user) return;
     try {
-      const orderData = {
+      // Capture GPS before saving
+      const gps = await getClientGPS();
+      const orderData: any = {
         clientId: user.id,
         clientName: user.name,
         clientEmail: user.email,
@@ -201,7 +228,14 @@ function AppContent() {
         deliveryAddress: '',
         deliveryInstructions: ''
       };
+      if (gps) {
+        orderData.clientLocation = { lat: gps.lat, lng: gps.lng };
+        orderData.clientLat = gps.lat;
+        orderData.clientLng = gps.lng;
+      }
       const saved = await FirebaseServiceV2.addOrder(orderData);
+      // Save to client_locations collection too
+      if (gps) await FirebaseServiceV2.updateClientLocation(saved.id, gps.lat, gps.lng);
       setActiveOrderId(saved.id);
       setView('tracking');
       setIsCartOpen(false);

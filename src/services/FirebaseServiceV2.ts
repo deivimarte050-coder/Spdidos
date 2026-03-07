@@ -23,7 +23,8 @@ const COLLECTIONS = {
   BUSINESSES: 'businesses',
   ORDERS: 'orders',
   DELIVERY_PERSONS: 'deliveryPersons',
-  DELIVERY_LOCATIONS: 'delivery_locations'
+  DELIVERY_LOCATIONS: 'delivery_locations',
+  CLIENT_LOCATIONS: 'client_locations'
 };
 
 // Helper para convertir Timestamp a string
@@ -266,6 +267,30 @@ class FirebaseServiceV2 {
         callback(null);
       }
     }, (err) => console.error('❌ [FirebaseV2] subscribeToDeliveryLocation error:', err));
+  }
+
+  async updateClientLocation(orderId: string, lat: number, lng: number, address?: string): Promise<void> {
+    try {
+      const locRef = doc(db, COLLECTIONS.CLIENT_LOCATIONS, orderId);
+      await setDoc(locRef, { lat, lng, address: address || '', updatedAt: Timestamp.now() }, { merge: true });
+      // Also update on the order document for easier access
+      const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
+      await updateDoc(orderRef, { clientLocation: { lat, lng }, clientAddress: address || '' });
+    } catch (error: any) {
+      console.error('❌ [FirebaseV2] Error actualizando ubicación cliente:', error);
+    }
+  }
+
+  subscribeToClientLocation(orderId: string, callback: (loc: { lat: number; lng: number; address?: string } | null) => void): () => void {
+    const locRef = doc(db, COLLECTIONS.CLIENT_LOCATIONS, orderId);
+    return onSnapshot(locRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        callback({ lat: data.lat, lng: data.lng, address: data.address });
+      } else {
+        callback(null);
+      }
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToClientLocation error:', err));
   }
 
   // ============ REPARTIDORES ============

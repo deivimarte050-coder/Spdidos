@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Clock, MapPin, User, Phone, MessageCircle, CheckCircle2, Package, Truck, ChefHat, Bell, X, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Clock, MapPin, User, Phone, MessageCircle, CheckCircle2, Package, Truck, ChefHat, Bell, X, AlertCircle, Navigation, Map, ChevronDown, ChevronUp } from 'lucide-react';
 import { Order } from '../types';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { useAuth } from '../contexts/AuthContext';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Nuevo Pedido',
@@ -23,6 +25,115 @@ const STATUS_COLORS: Record<string, string> = {
   on_the_way: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   delivered: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   cancelled: 'bg-red-100 text-red-700 border-red-200'
+};
+
+// Navigation helpers
+const openGoogleMaps = (lat: number, lng: number) => {
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+};
+const openWaze = (lat: number, lng: number) => {
+  window.open(`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`, '_blank');
+};
+
+// Mapa con ubicación del cliente
+const ClientLocationCard: React.FC<{ order: Order }> = ({ order }) => {
+  const [loc, setLoc] = useState<{ lat: number; lng: number; address?: string } | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [showNavMenu, setShowNavMenu] = useState(false);
+  const navMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Try location from order first
+    const ol = (order as any).clientLocation;
+    if (ol?.lat) setLoc(ol);
+    // Then subscribe to real-time updates
+    const unsub = FirebaseServiceV2.subscribeToClientLocation(order.id, (l) => { if (l) setLoc(l); });
+    return unsub;
+  }, [order.id]);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (navMenuRef.current && !navMenuRef.current.contains(e.target as Node)) setShowNavMenu(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  if (!loc) {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+        <MapPin className="w-4 h-4 text-gray-400" />
+        <span className="text-xs text-gray-400">Ubicación GPS del cliente no disponible</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <button onClick={() => setExpanded(p => !p)}
+        className="w-full flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100 hover:bg-blue-100 transition-all">
+        <div className="flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-blue-600" />
+          <span className="text-sm font-bold text-blue-700">Ver ubicación del cliente</span>
+          <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full font-bold animate-pulse">EN VIVO</span>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-blue-600" /> : <ChevronDown className="w-4 h-4 text-blue-600" />}
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden">
+            <div className="rounded-2xl overflow-hidden border border-blue-100 shadow-sm">
+              <div className="h-[200px]">
+                <MapContainer center={[loc.lat, loc.lng]} zoom={16} className="h-full w-full" scrollWheelZoom={false}>
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <Marker position={[loc.lat, loc.lng]}
+                    icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/1216/1216844.png', iconSize: [36, 36], iconAnchor: [18, 36] })}>
+                    <Popup>Ubicación del cliente</Popup>
+                  </Marker>
+                </MapContainer>
+              </div>
+              {loc.address && (
+                <div className="px-3 py-2 bg-blue-50 text-xs text-blue-700 font-medium flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3" /> {loc.address}
+                </div>
+              )}
+              <div className="p-3 bg-white border-t border-blue-50 flex gap-2">
+                <div className="relative flex-1" ref={navMenuRef}>
+                  <button onClick={() => setShowNavMenu(p => !p)}
+                    className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all">
+                    <Navigation className="w-4 h-4" /> Navegar
+                  </button>
+                  <AnimatePresence>
+                    {showNavMenu && (
+                      <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                        className="absolute bottom-full mb-2 left-0 right-0 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50">
+                        <button onClick={() => { openGoogleMaps(loc.lat, loc.lng); setShowNavMenu(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-all">
+                          <Map className="w-4 h-4 text-blue-600" />
+                          <span className="font-bold text-sm text-gray-800">Google Maps</span>
+                        </button>
+                        <div className="border-t border-gray-100" />
+                        <button onClick={() => { openWaze(loc.lat, loc.lng); setShowNavMenu(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-all">
+                          <span className="text-base">🚗</span>
+                          <span className="font-bold text-sm text-gray-800">Waze</span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <div className="text-xs text-gray-400 flex items-center gap-1 px-2">
+                  <span>{loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 };
 
 const BusinessOrders: React.FC = () => {
@@ -165,6 +276,11 @@ const BusinessOrders: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Ubicación GPS del cliente */}
+              {!['delivered', 'cancelled'].includes(order.status) && (
+                <ClientLocationCard order={order} />
+              )}
 
               {/* Items */}
               <div className="space-y-1">
