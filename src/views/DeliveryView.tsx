@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Package, MapPin, CheckCircle2, Navigation, Store, ArrowUpRight, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map } from 'lucide-react';
+import { Package, MapPin, CheckCircle2, Navigation, Store, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map, ChevronRight } from 'lucide-react';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { Order } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,7 +11,45 @@ import 'leaflet-routing-machine';
 import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
 import { SPM_CENTER } from '../constants';
 
-// Auto-follow the delivery person on the map
+// ─── Types ───────────────────────────────────────────────────────────────────
+interface RouteStep { text: string; distance: number; type: string; }
+interface RouteInfo { totalTime: number; totalDistance: number; steps: RouteStep[]; }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const fmtDist = (m: number) => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+const fmtTime = (s: number) => s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.ceil(s / 60)} min`;
+
+// ─── Turn arrow icon ─────────────────────────────────────────────────────────
+const TurnArrow: React.FC<{ type: string; size?: number; color?: string }> = ({ type, size = 36, color = 'white' }) => {
+  const t = (type || '').toLowerCase();
+  if (t.includes('left') && (t.includes('sharp') || t.includes('uturn'))) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" transform="scale(-1,1) translate(-24,0)"/></svg>
+  );
+  if (t.includes('slight') && t.includes('left')) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z" opacity="0.7"/><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" transform="rotate(-45,12,12) scale(0.6) translate(8,8)"/></svg>
+  );
+  if (t.includes('left')) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+  );
+  if (t.includes('right') && (t.includes('sharp') || t.includes('uturn'))) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M4 11h12.17l-5.58-5.59L12 4l8 8-8 8-1.41-1.41L16.17 13H4v-2z" transform="scale(-1,1) translate(-24,0)"/></svg>
+  );
+  if (t.includes('slight') && t.includes('right')) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" opacity="0.7"/></svg>
+  );
+  if (t.includes('right')) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M4 11h12.17l-5.58-5.59L12 4l8 8-8 8-1.41-1.41L16.17 13H4v-2z"/></svg>
+  );
+  if (t.includes('roundabout')) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+  );
+  if (t.includes('destination') || t.includes('arrived')) return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+  );
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>;
+};
+
+// ─── Auto-follow delivery person ──────────────────────────────────────────────
 const MapFollower: React.FC<{ center: [number, number] }> = ({ center }) => {
   const map = useMap();
   useEffect(() => {
@@ -20,88 +58,101 @@ const MapFollower: React.FC<{ center: [number, number] }> = ({ center }) => {
   return null;
 };
 
-// Routing control — updates waypoints without recreating the control
-const RoutingControl: React.FC<{ from: [number, number]; to: [number, number] }> = ({ from, to }) => {
+// ─── Base routing control (reusable) ─────────────────────────────────────────
+const RoutingControl: React.FC<{
+  from: [number, number];
+  to: [number, number];
+  navMode?: boolean;
+  onRouteFound?: (info: RouteInfo) => void;
+}> = ({ from, to, navMode = false, onRouteFound }) => {
   const map = useMap();
   const ctrlRef = useRef<any>(null);
 
-  // Create control once
   useEffect(() => {
     if (!(L as any).Routing) return;
     try {
-      ctrlRef.current = (L as any).Routing.control({
+      const ctrl = (L as any).Routing.control({
         waypoints: [L.latLng(from[0], from[1]), L.latLng(to[0], to[1])],
-        routeWhileDragging: false,
-        addWaypoints: false,
-        draggableWaypoints: false,
-        show: false,
-        createMarker: () => null,
-        fitSelectedRoutes: false,
+        routeWhileDragging: false, addWaypoints: false, draggableWaypoints: false,
+        show: false, createMarker: () => null, fitSelectedRoutes: false,
         lineOptions: {
-          styles: [
-            { color: '#6b21a8', weight: 9, opacity: 0.25 },
-            { color: '#4f46e5', weight: 6, opacity: 1 }
-          ],
-          extendToWaypoints: true,
-          missingRouteTolerance: 0
+          styles: navMode
+            ? [{ color: '#0090b8', weight: 12, opacity: 0.3 }, { color: '#00d4ff', weight: 7, opacity: 1 }]
+            : [{ color: '#6b21a8', weight: 9, opacity: 0.25 }, { color: '#4f46e5', weight: 6, opacity: 1 }],
+          extendToWaypoints: true, missingRouteTolerance: 0
         }
       }).addTo(map);
+      ctrl.on('routesfound', (e: any) => {
+        const r = e.routes[0];
+        if (onRouteFound && r) {
+          onRouteFound({
+            totalTime: r.summary.totalTime,
+            totalDistance: r.summary.totalDistance,
+            steps: (r.instructions || []).map((i: any) => ({ text: i.text, distance: i.distance, type: i.type }))
+          });
+        }
+      });
+      ctrlRef.current = ctrl;
     } catch (e) {}
-    return () => {
-      if (ctrlRef.current) {
-        try { map.removeControl(ctrlRef.current); } catch {}
-        ctrlRef.current = null;
-      }
-    };
+    return () => { if (ctrlRef.current) { try { map.removeControl(ctrlRef.current); } catch {} ctrlRef.current = null; } };
   }, [map]);
 
-  // Update waypoints smoothly when position changes
   useEffect(() => {
     if (!ctrlRef.current) return;
-    try {
-      ctrlRef.current.setWaypoints([L.latLng(from[0], from[1]), L.latLng(to[0], to[1])]);
-    } catch {}
+    try { ctrlRef.current.setWaypoints([L.latLng(from[0], from[1]), L.latLng(to[0], to[1])]); } catch {}
   }, [from[0], from[1], to[0], to[1]]);
 
   return null;
 };
 
-// Mapa de seguimiento para repartidor
-const DeliveryTrackingMap: React.FC<{ deliveryLoc: [number, number]; clientLoc?: [number, number] }> = ({ deliveryLoc, clientLoc }) => {
-  return (
-    <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: 340 }}>
-      <MapContainer center={deliveryLoc} zoom={16} className="h-full w-full" scrollWheelZoom={false} zoomControl={false}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
-        <MapFollower center={deliveryLoc} />
-        {clientLoc && <RoutingControl from={deliveryLoc} to={clientLoc} />}
-        {/* Delivery person marker */}
-        <Marker position={deliveryLoc} icon={L.divIcon({
-          className: '',
-          html: `<div style="width:38px;height:38px;background:#4f46e5;border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(79,70,229,0.5)">
-                   <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                 </div>`,
-          iconSize: [38, 38],
-          iconAnchor: [19, 19]
-        })}>
-          <Popup>Tu ubicación</Popup>
-        </Marker>
-        {/* Client marker */}
-        {clientLoc && (
-          <Marker position={clientLoc} icon={L.divIcon({
-            className: '',
-            html: `<div style="display:flex;flex-direction:column;align-items:center">
-                     <div style="width:36px;height:36px;background:#dc2626;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(220,38,38,0.5)"></div>
-                   </div>`,
-            iconSize: [36, 44],
-            iconAnchor: [18, 44]
-          })}>
-            <Popup>📦 Entrega aquí</Popup>
-          </Marker>
-        )}
-      </MapContainer>
-    </div>
-  );
-};
+// ─── Card view map (light tiles, indigo route) ────────────────────────────────
+const DeliveryTrackingMap: React.FC<{ deliveryLoc: [number, number]; clientLoc?: [number, number] }> = ({ deliveryLoc, clientLoc }) => (
+  <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: 300 }}>
+    <MapContainer center={deliveryLoc} zoom={16} className="h-full w-full" scrollWheelZoom={false} zoomControl={false}>
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
+      <MapFollower center={deliveryLoc} />
+      {clientLoc && <RoutingControl from={deliveryLoc} to={clientLoc} />}
+      <Marker position={deliveryLoc} icon={L.divIcon({
+        className: '', iconSize: [38, 38], iconAnchor: [19, 38],
+        html: `<div style="width:38px;height:38px;background:#4f46e5;border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(79,70,229,.5)"><svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg></div>`
+      })}><Popup>Tu ubicación</Popup></Marker>
+      {clientLoc && (
+        <Marker position={clientLoc} icon={L.divIcon({
+          className: '', iconSize: [36, 44], iconAnchor: [18, 44],
+          html: `<div style="display:flex;flex-direction:column;align-items:center"><div style="width:32px;height:32px;background:#dc2626;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(220,38,38,.5)"></div></div>`
+        })}><Popup>📦 Entrega aquí</Popup></Marker>
+      )}
+    </MapContainer>
+  </div>
+);
+
+// ─── Full-screen navigation map (dark tiles, cyan route) ──────────────────────
+const WazeNavMap: React.FC<{
+  deliveryLoc: [number, number];
+  clientLoc: [number, number];
+  onRouteFound: (info: RouteInfo) => void;
+}> = ({ deliveryLoc, clientLoc, onRouteFound }) => (
+  <MapContainer center={deliveryLoc} zoom={17} className="h-full w-full" scrollWheelZoom={false} zoomControl={false}>
+    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="" />
+    <MapFollower center={deliveryLoc} />
+    <RoutingControl from={deliveryLoc} to={clientLoc} navMode onRouteFound={onRouteFound} />
+    {/* Navigation arrow */}
+    <Marker position={deliveryLoc} icon={L.divIcon({
+      className: '', iconSize: [40, 48], iconAnchor: [20, 24],
+      html: `<svg width="40" height="48" viewBox="0 0 40 48" style="filter:drop-shadow(0 3px 10px rgba(0,212,255,.7))">
+               <polygon points="20,2 38,44 20,34 2,44" fill="#00d4ff" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
+             </svg>`
+    })}><Popup>Tu posición</Popup></Marker>
+    {/* Destination red pin */}
+    <Marker position={clientLoc} icon={L.divIcon({
+      className: '', iconSize: [36, 44], iconAnchor: [18, 44],
+      html: `<div style="display:flex;flex-direction:column;align-items:center">
+               <div style="width:32px;height:32px;background:#ef4444;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 12px rgba(239,68,68,.7)"></div>
+               <div style="width:4px;height:10px;background:#ef4444;border-radius:2px;margin-top:-2px"></div>
+             </div>`
+    })}><Popup>📦 Entrega aquí</Popup></Marker>
+  </MapContainer>
+);
 
 const Radar = () => (
   <div className="relative flex items-center justify-center w-56 h-56 mx-auto">
@@ -124,6 +175,7 @@ const DeliveryView: React.FC = () => {
   const [isNavigating, setIsNavigating] = useState(false);
   const [myLocation, setMyLocation] = useState<[number, number]>(SPM_CENTER);
   const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Subscribe to available (ready) orders
@@ -264,29 +316,74 @@ const DeliveryView: React.FC = () => {
           </motion.div>
         ) : myOrder ? (
           /* ── PEDIDO ACTIVO ── */
-          isNavigating ? (
-            <div className="fixed inset-0 z-50 bg-white flex flex-col">
-              <div className="bg-blue-600 p-5 text-white flex items-center gap-3 shadow-lg">
-                <div className="bg-white/20 p-2.5 rounded-xl"><ArrowUpRight className="w-7 h-7" /></div>
-                <div className="flex-1">
-                  <p className="text-xl font-black">{myOrder.businessName}</p>
-                  <p className="text-blue-100 text-sm">{myOrder.deliveryAddress}</p>
+          isNavigating && getClientLocTuple() ? (
+            /* ══ WAZE-STYLE NAVIGATION ══ */
+            <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0d1117' }}>
+
+              {/* Top instruction panel */}
+              <div style={{ background: '#151b2e', borderBottom: '1px solid rgba(0,212,255,0.15)' }} className="px-5 pt-5 pb-4">
+                <div className="flex items-center gap-4">
+                  <div style={{ background: 'rgba(0,212,255,0.12)', border: '2px solid rgba(0,212,255,0.35)', borderRadius: 14, padding: 10, flexShrink: 0 }}>
+                    <TurnArrow type={routeInfo?.steps[0]?.type || 'Head'} size={34} color="#00d4ff" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div style={{ color: '#00d4ff', fontSize: 38, fontWeight: 900, lineHeight: 1 }}>
+                      {routeInfo?.steps[0] ? fmtDist(routeInfo.steps[0].distance) : '...'}
+                    </div>
+                    <p className="text-sm font-bold mt-1 truncate" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                      {routeInfo?.steps[0]?.text || 'Calculando ruta...'}
+                    </p>
+                  </div>
+                  <button onClick={() => setIsNavigating(false)}
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 12, padding: '8px 14px' }}
+                    className="text-white font-bold text-sm flex-shrink-0">
+                    ✕
+                  </button>
                 </div>
-                <button onClick={() => setIsNavigating(false)} className="bg-white/20 px-3 py-1.5 rounded-lg font-bold text-sm">Salir</button>
+
+                {/* y luego */}
+                {routeInfo?.steps[1] && (
+                  <div className="flex items-center gap-2 mt-3" style={{ opacity: 0.55 }}>
+                    <span className="text-xs font-bold" style={{ color: '#9ca3af' }}>y luego</span>
+                    <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 6, padding: '3px 6px', display: 'flex', alignItems: 'center' }}>
+                      <TurnArrow type={routeInfo.steps[1].type} size={14} color="white" />
+                    </div>
+                    <span className="text-xs truncate" style={{ color: '#d1d5db' }}>{routeInfo.steps[1].text}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex-1">
-                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={getClientLocTuple()} />
+
+              {/* Map — fills remaining space */}
+              <div className="flex-1 relative overflow-hidden">
+                <WazeNavMap deliveryLoc={myLocation} clientLoc={getClientLocTuple()!} onRouteFound={setRouteInfo} />
               </div>
-              <div className="p-4 bg-white border-t border-gray-100 grid grid-cols-3 gap-2">
-                <button onClick={openInGoogleMaps} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5">
-                  <Map className="w-4 h-4" /> Google
-                </button>
-                <button onClick={openInWaze} className="bg-[#33ccff] text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5">
-                  <img src="https://cdn-icons-png.flaticon.com/512/732/732258.png" className="w-4 h-4" alt="Waze" /> Waze
-                </button>
-                <button onClick={handleComplete} className="bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" /> Entregado
-                </button>
+
+              {/* Bottom bar */}
+              <div style={{ background: '#151b2e', borderTop: '1px solid rgba(255,255,255,0.08)' }} className="px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span style={{ color: '#00d4ff', fontSize: 26, fontWeight: 900 }}>
+                        {routeInfo ? fmtTime(routeInfo.totalTime) : '--'}
+                      </span>
+                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>•</span>
+                      <span className="font-bold" style={{ color: 'rgba(255,255,255,0.85)', fontSize: 15 }}>
+                        {routeInfo ? fmtDist(routeInfo.totalDistance) : '--'}
+                      </span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>{myOrder.clientName || 'Cliente'}</p>
+                  </div>
+                  <button onClick={() => setIsNavigating(false)}
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 22, padding: '9px 16px' }}
+                    className="text-white font-bold text-sm whitespace-nowrap">
+                    Vista general
+                  </button>
+                  <button onClick={handleComplete}
+                    style={{ background: '#22c55e', borderRadius: 22, padding: '9px 16px' }}
+                    className="text-white font-bold text-sm flex items-center gap-2 whitespace-nowrap">
+                    <CheckCircle2 className="w-4 h-4" /> Entregado
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
