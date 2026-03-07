@@ -124,6 +124,23 @@ class FirebaseServiceV2 {
     }
   }
 
+  async updateBusiness(id: string, businessData: any): Promise<any> {
+    try {
+      console.log('[FirebaseV2] 📝 Actualizando negocio:', id);
+      const { doc, setDoc } = await import('firebase/firestore');
+      const businessRef = doc(db, COLLECTIONS.BUSINESSES, id);
+      await setDoc(businessRef, {
+        ...businessData,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+      console.log('✅ [FirebaseV2] Negocio actualizado:', id);
+      return { id, ...businessData };
+    } catch (error: any) {
+      console.error('❌ [FirebaseV2] Error actualizando negocio:', error);
+      throw error;
+    }
+  }
+
   // ============ PEDIDOS ============
   
   async getOrders(): Promise<any[]> {

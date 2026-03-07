@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Star, Clock, MapPin, ChevronRight } from 'lucide-react';
-import DataService, { Business } from '../services/DataService';
+import { Business } from '../services/DataService';
+import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 
 interface BusinessListProps {
   onBusinessSelect?: (business: Business) => void;
@@ -13,19 +14,29 @@ const BusinessList: React.FC<BusinessListProps> = ({ onBusinessSelect, showOnlyA
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = () => {
-      const allBusinesses = DataService.getBusinesses();
-      const filteredBusinesses = showOnlyActive 
-        ? allBusinesses.filter(b => b.status === 'active')
-        : allBusinesses;
-      setBusinesses(filteredBusinesses);
-      setLoading(false);
+    const loadData = async () => {
+      try {
+        console.log('🔍 [BusinessList] Cargando negocios desde Firebase...');
+        const allBusinesses = await FirebaseServiceV2.getBusinesses();
+        console.log(`✅ [BusinessList] ${allBusinesses.length} negocios encontrados`);
+        
+        const filteredBusinesses = showOnlyActive 
+          ? allBusinesses.filter(b => b.status === 'active')
+          : allBusinesses;
+        setBusinesses(filteredBusinesses);
+      } catch (error) {
+        console.error('❌ [BusinessList] Error cargando negocios:', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     loadData();
-    const unsubscribe = DataService.subscribe(loadData);
     
-    return unsubscribe;
+    // Recargar cada 30 segundos para mantener sincronizado
+    const interval = setInterval(loadData, 30000);
+    
+    return () => clearInterval(interval);
   }, [showOnlyActive]);
 
   if (loading) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Edit2, Trash2, Upload, Save, X, Eye, EyeOff, DollarSign } from 'lucide-react';
-import DataService from '../services/DataService';
+import { Plus, Edit2, Trash2, Upload, Save, X, Eye, EyeOff } from 'lucide-react';
+import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { useAuth } from '../contexts/AuthContext';
 
 interface MenuItem {
@@ -32,55 +32,71 @@ const MenuManager: React.FC = () => {
 
   const categories = ['Platos Típicos', 'Pizzas', 'Bebidas', 'Postres', 'Ensaladas', 'Sopas'];
 
-  // Cargar menú del negocio actual desde DataService
+  // Cargar menú del negocio actual desde Firebase
   useEffect(() => {
-    const loadMenu = () => {
+    const loadMenu = async () => {
       if (user?.role === 'business') {
-        const businesses = DataService.getBusinesses();
-        const business = businesses.find(b => b.email === user.email);
-        if (business && business.menu) {
-          // Convertir el menú del formato del DataService al formato del MenuManager
-          const convertedMenu: MenuItem[] = business.menu.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description || '',
-            price: item.price,
-            category: item.category || 'General',
-            image: item.image || 'https://picsum.photos/seed/default/300/200',
-            isActive: item.available !== false,
-            isAvailable: item.available !== false
-          }));
-          setMenuItems(convertedMenu);
+        try {
+          console.log('🔍 [MenuManager] Cargando menú desde Firebase...');
+          const businesses = await FirebaseServiceV2.getBusinesses();
+          const business = businesses.find(b => b.email === user.email);
+          if (business && business.menu) {
+            const convertedMenu: MenuItem[] = business.menu.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              description: item.description || '',
+              price: item.price,
+              category: item.category || 'General',
+              image: item.image || 'https://picsum.photos/seed/default/300/200',
+              isActive: item.available !== false,
+              isAvailable: item.available !== false
+            }));
+            setMenuItems(convertedMenu);
+            console.log(`✅ [MenuManager] ${convertedMenu.length} items cargados`);
+          }
+        } catch (error) {
+          console.error('❌ [MenuManager] Error cargando menú:', error);
         }
       }
     };
 
     loadMenu();
-    const unsubscribe = DataService.subscribe(loadMenu);
     
-    return unsubscribe;
+    // Recargar cada 30 segundos
+    const interval = setInterval(loadMenu, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
-  // Guardar menú en el DataService
-  const saveMenuToDataService = (updatedMenu: MenuItem[]) => {
+  // Guardar menú en Firebase
+  const saveMenuToFirebase = async (updatedMenu: MenuItem[]) => {
     if (user?.role === 'business') {
-      const businesses = DataService.getBusinesses();
-      const businessIndex = businesses.findIndex(b => b.email === user.email);
-      
-      if (businessIndex !== -1) {
-        // Convertir al formato del DataService
-        const convertedMenu = updatedMenu.map(item => ({
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          price: item.price,
-          category: item.category,
-          image: item.image,
-          available: item.isAvailable && item.isActive
-        }));
+      try {
+        console.log('💾 [MenuManager] Guardando menú en Firebase...');
+        const businesses = await FirebaseServiceV2.getBusinesses();
+        const businessIndex = businesses.findIndex(b => b.email === user.email);
         
-        businesses[businessIndex].menu = convertedMenu;
-        DataService.saveBusinesses(businesses);
+        if (businessIndex !== -1) {
+          const business = businesses[businessIndex];
+          // Convertir al formato del DataService/Firebase
+          const convertedMenu = updatedMenu.map(item => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            price: item.price,
+            category: item.category,
+            image: item.image,
+            available: item.isAvailable && item.isActive
+          }));
+          
+          // Actualizar el negocio con el nuevo menú
+          await FirebaseServiceV2.updateBusiness(business.id, {
+            ...business,
+            menu: convertedMenu
+          });
+          console.log('✅ [MenuManager] Menú guardado en Firebase');
+        }
+      } catch (error) {
+        console.error('❌ [MenuManager] Error guardando menú:', error);
       }
     }
   };
@@ -107,7 +123,7 @@ const MenuManager: React.FC = () => {
         item.id === editingItem.id ? editingItem : item
       );
       setMenuItems(updatedMenu);
-      saveMenuToDataService(updatedMenu);
+      saveMenuToFirebase(updatedMenu);
       setEditingItem(null);
     }
   };
@@ -126,7 +142,7 @@ const MenuManager: React.FC = () => {
       };
       const updatedMenu = [...menuItems, item];
       setMenuItems(updatedMenu);
-      saveMenuToDataService(updatedMenu);
+      saveMenuToFirebase(updatedMenu);
       setNewItem({
         name: '',
         description: '',
@@ -144,7 +160,7 @@ const MenuManager: React.FC = () => {
     if (confirm('¿Estás seguro de que quieres eliminar este producto?')) {
       const updatedMenu = menuItems.filter(item => item.id !== id);
       setMenuItems(updatedMenu);
-      saveMenuToDataService(updatedMenu);
+      saveMenuToFirebase(updatedMenu);
     }
   };
 
@@ -153,7 +169,7 @@ const MenuManager: React.FC = () => {
       item.id === id ? { ...item, isActive: !item.isActive } : item
     );
     setMenuItems(updatedMenu);
-    saveMenuToDataService(updatedMenu);
+    saveMenuToFirebase(updatedMenu);
   };
 
   const toggleAvailable = (id: string) => {
@@ -161,7 +177,7 @@ const MenuManager: React.FC = () => {
       item.id === id ? { ...item, isAvailable: !item.isAvailable } : item
     );
     setMenuItems(updatedMenu);
-    saveMenuToDataService(updatedMenu);
+    saveMenuToFirebase(updatedMenu);
   };
 
   const activeItems = menuItems.filter(item => item.isActive);

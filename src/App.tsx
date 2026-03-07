@@ -12,6 +12,7 @@ import AdminView from './views/AdminView';
 import { CartItem, View, Order } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
+import FirebaseServiceV2 from './services/FirebaseServiceV2';
 
 function AppContent() {
   const { user, logout } = useAuth();
@@ -63,9 +64,24 @@ function AppContent() {
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
-  const handleBusinessSelect = (business: Business) => {
-    setSelectedBusiness(business);
-    setView('restaurant');
+  const handleBusinessSelect = async (business: Business) => {
+    try {
+      console.log('🔍 [App] Cargando negocio completo desde Firebase:', business.id);
+      // Obtener el negocio más reciente desde Firebase para tener el menú actualizado
+      const businesses = await FirebaseServiceV2.getBusinesses();
+      const updatedBusiness = businesses.find(b => b.id === business.id);
+      if (updatedBusiness) {
+        setSelectedBusiness(updatedBusiness);
+        console.log('✅ [App] Menú cargado:', updatedBusiness.menu?.length || 0, 'items');
+      } else {
+        setSelectedBusiness(business);
+      }
+      setView('restaurant');
+    } catch (error) {
+      console.error('❌ [App] Error cargando negocio:', error);
+      setSelectedBusiness(business);
+      setView('restaurant');
+    }
   };
 
   const handleCheckout = () => {
