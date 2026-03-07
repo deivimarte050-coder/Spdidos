@@ -103,6 +103,8 @@ const AdminView: React.FC = () => {
   const handleCreateBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('🚀 Iniciando creación de negocio...');
+    
     // Generar contraseña automática si no se proporciona
     const generatedPassword = newBusiness.password || `SP${Date.now().toString().slice(-6)}`;
     
@@ -117,22 +119,28 @@ const AdminView: React.FC = () => {
       createdAt: new Date().toISOString()
     };
     
+    console.log('📋 Datos del negocio:', businessWithPassword);
+    
     try {
       // Guardar en Firebase
-      await FirebaseServiceV2.addBusiness(businessWithPassword);
-      console.log('✅ Negocio guardado en Firebase');
+      console.log('💾 Intentando guardar en Firebase...');
+      const result = await FirebaseServiceV2.addBusiness(businessWithPassword);
+      console.log('✅ Negocio guardado en Firebase:', result);
       
       // Actualizar lista local
+      console.log('🔄 Actualizando lista de negocios...');
       const updatedBusinesses = await FirebaseServiceV2.getBusinesses();
       setBusinesses(updatedBusinesses);
       
-      alert(`✅ Negocio creado exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\nGuarda estas credenciales para el acceso del negocio.`);
+      alert(`✅ Negocio creado exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\nEl negocio fue guardado en Firebase.`);
       
       setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', image: '', password: '' });
       setActiveTab('businesses');
-    } catch (error) {
-      console.error('❌ Error guardando negocio:', error);
-      alert('❌ Error al crear el negocio. Intenta de nuevo.');
+    } catch (error: any) {
+      console.error('❌ Error completo:', error);
+      console.error('Código de error:', error.code);
+      console.error('Mensaje:', error.message);
+      alert(`❌ Error al crear el negocio:\n\nCódigo: ${error.code || 'N/A'}\nMensaje: ${error.message || 'Error desconocido'}\n\nRevisa la consola (F12) para más detalles.`);
     }
   };
 
