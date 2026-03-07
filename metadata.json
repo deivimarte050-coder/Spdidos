@@ -1,0 +1,5 @@
+{
+  "name": "Spdidos",
+  "description": "App de delivery sencilla con mapa en tiempo real de San Pedro de Macorís, República Dominicana.",
+  "requestFramePermissions": ["geolocation"]
+}

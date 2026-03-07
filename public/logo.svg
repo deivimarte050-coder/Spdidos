@@ -1,0 +1,27 @@
+<svg width="200" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="200" height="80" rx="12" fill="#FF6B35"/>
+  
+  <!-- Delivery icon -->
+  <g transform="translate(15, 20)">
+    <!-- Scooter body -->
+    <rect x="5" y="15" width="25" height="12" rx="3" fill="white"/>
+    <!-- Scooter front -->
+    <rect x="28" y="18" width="8" height="6" rx="2" fill="white"/>
+    <!-- Wheels -->
+    <circle cx="12" cy="32" r="4" fill="white"/>
+    <circle cx="28" cy="32" r="4" fill="white"/>
+    <!-- Delivery box -->
+    <rect x="8" y="8" width="12" height="8" rx="2" fill="#FFD93D"/>
+    <!-- Box strap -->
+    <rect x="13" y="6" width="2" height="12" fill="white"/>
+  </g>
+  
+  <!-- Text -->
+  <text x="55" y="35" font-family="Arial Black, sans-serif" font-size="24" font-weight="900" fill="white">
+    Spdidos
+  </text>
+  <text x="55" y="52" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white" opacity="0.9">
+    DELIVERY &amp; MANDADOS
+  </text>
+</svg>
