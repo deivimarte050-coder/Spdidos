@@ -122,17 +122,30 @@ const AdminView: React.FC = () => {
     console.log('📋 Datos del negocio:', businessWithPassword);
     
     try {
-      // Guardar en Firebase
-      console.log('💾 Intentando guardar en Firebase...');
-      const result = await FirebaseServiceV2.addBusiness(businessWithPassword);
-      console.log('✅ Negocio guardado en Firebase:', result);
+      // 1. Guardar NEGOCIO en Firebase
+      console.log('💾 Guardando NEGOCIO...');
+      const businessResult = await FirebaseServiceV2.addBusiness(businessWithPassword);
+      console.log('✅ Negocio guardado:', businessResult);
+      
+      // 2. Crear USUARIO del negocio para login
+      console.log('� Creando USUARIO para login...');
+      await FirebaseServiceV2.addUser({
+        name: newBusiness.name,
+        email: newBusiness.email,
+        password: generatedPassword,
+        phone: newBusiness.phone,
+        whatsapp: newBusiness.whatsapp,
+        role: 'business',
+        status: 'active',
+        businessId: businessResult.id
+      });
+      console.log('✅ Usuario creado para login');
       
       // Actualizar lista local
-      console.log('🔄 Actualizando lista de negocios...');
       const updatedBusinesses = await FirebaseServiceV2.getBusinesses();
       setBusinesses(updatedBusinesses);
       
-      alert(`✅ Negocio creado exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\nEl negocio fue guardado en Firebase.`);
+      alert(`✅ Negocio y usuario creados exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\n⚠️ IMPORTANTE: Ahora puedes iniciar sesión con estas credenciales.`);
       
       setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', image: '', password: '' });
       setActiveTab('businesses');
@@ -140,7 +153,7 @@ const AdminView: React.FC = () => {
       console.error('❌ Error completo:', error);
       console.error('Código de error:', error.code);
       console.error('Mensaje:', error.message);
-      alert(`❌ Error al crear el negocio:\n\nCódigo: ${error.code || 'N/A'}\nMensaje: ${error.message || 'Error desconocido'}\n\nRevisa la consola (F12) para más detalles.`);
+      alert(`❌ Error al crear el negocio:\n\nCódigo: ${error.code || 'N/A'}\nMensaje: ${error.message || 'Error desconocido'}`);
     }
   };
 
