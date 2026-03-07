@@ -41,7 +41,7 @@ function AppContent() {
     return <Auth />;
   }
 
-  const addToCart = (item: { id: string; name: string; price: number }) => {
+  const addToCart = (item: CartItem) => {
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
