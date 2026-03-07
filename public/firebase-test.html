@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Diagnóstico Firebase - Spdidos</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1 { color: #333; }
+    .test { padding: 15px; margin: 10px 0; border-radius: 8px; }
+    .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+    .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+    .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; border: none; border-radius: 5px; font-size: 16px; }
+    .btn-primary { background: #007bff; color: white; }
+    .btn-success { background: #28a745; color: white; }
+    #output { margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px; min-height: 200px; font-family: monospace; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Diagnóstico Firebase - Spdidos</h1>
+    <p>Esta página verifica la conexión a Firebase y Firestore</p>
+    
+    <div id="tests"></div>
+    
+    <div style="margin-top: 20px;">
+      <button class="btn-primary" onclick="testConnection()">🧪 Probar Conexión</button>
+      <button class="btn-success" onclick="testWrite()">📝 Escribir Dato de Prueba</button>
+      <button class="btn-primary" onclick="testRead()">📖 Leer Datos</button>
+    </div>
+    
+    <div id="output"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js';
+    import { getFirestore, collection, addDoc, getDocs, Timestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      projectId: "spdidos-8edda",
+      appId: "1:573150906777:web:0ac9b6294842a031736b08",
+      storageBucket: "spdidos-8edda.firebasestorage.app",
+      apiKey: "AIzaSyA0d21nelkgyJ0DGtlEdmzLG6AgMgD8GmE",
+      authDomain: "spdidos-8edda.firebaseapp.com",
+      messagingSenderId: "573150906777"
+    };
+
+    let app;
+    let db;
+
+    function log(message, type = 'info') {
+      const output = document.getElementById('output');
+      const time = new Date().toLocaleTimeString();
+      const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'blue';
+      output.innerHTML += `<div style="color: ${color}; margin: 5px 0;">[${time}] ${message}</div>`;
+      console.log(message);
+    }
+
+    function addTest(message, passed) {
+      const tests = document.getElementById('tests');
+      const div = document.createElement('div');
+      div.className = `test ${passed ? 'success' : 'error'}`;
+      div.innerHTML = passed ? '✅ ' + message : '❌ ' + message;
+      tests.appendChild(div);
+    }
+
+    // Inicializar Firebase
+    try {
+      log('🔧 Inicializando Firebase...');
+      app = initializeApp(firebaseConfig);
+      log('✅ Firebase inicializado', 'success');
+      addTest('Firebase App inicializado', true);
+      
+      db = getFirestore(app);
+      log('✅ Firestore inicializado', 'success');
+      addTest('Firestore inicializado', true);
+    } catch (error) {
+      log('❌ Error inicializando Firebase: ' + error.message, 'error');
+      addTest('Firebase inicializado', false);
+    }
+
+    window.testConnection = async () => {
+      log('🧪 Probando conexión a Firestore...');
+      try {
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        log(`✅ Conexión exitosa. ${querySnapshot.docs.length} usuarios encontrados`, 'success');
+        addTest('Conexión a Firestore', true);
+      } catch (error) {
+        log('❌ Error de conexión: ' + error.message, 'error');
+        log('Código de error: ' + error.code, 'error');
+        addTest('Conexión a Firestore', false);
+      }
+    };
+
+    window.testWrite = async () => {
+      log('📝 Escribiendo dato de prueba...');
+      try {
+        const docRef = await addDoc(collection(db, 'users'), {
+          name: 'Usuario de Prueba',
+          email: 'test@example.com',
+          role: 'client',
+          createdAt: Timestamp.now()
+        });
+        log(`✅ Dato escrito con ID: ${docRef.id}`, 'success');
+        addTest('Escritura en Firestore', true);
+      } catch (error) {
+        log('❌ Error escribiendo: ' + error.message, 'error');
+        log('Código de error: ' + error.code, 'error');
+        addTest('Escritura en Firestore', false);
+      }
+    };
+
+    window.testRead = async () => {
+      log('📖 Leyendo datos...');
+      try {
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        log(`✅ ${querySnapshot.docs.length} documentos encontrados:`, 'success');
+        querySnapshot.docs.forEach((doc, i) => {
+          log(`  ${i + 1}. ${doc.id}: ${JSON.stringify(doc.data())}`);
+        });
+        addTest('Lectura de Firestore', true);
+      } catch (error) {
+        log('❌ Error leyendo: ' + error.message, 'error');
+        addTest('Lectura de Firestore', false);
+      }
+    };
+
+    // Auto-test al cargar
+    setTimeout(() => {
+      if (app && db) {
+        testConnection();
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
