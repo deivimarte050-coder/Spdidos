@@ -215,24 +215,23 @@ if ('Notification' in window && Notification.permission === 'default') {
   Notification.requestPermission().catch(() => {});
 }
 
-// ─── Push notification helper (uses SW to show OS notification) ──────────────
+// ─── Push notification helper ────────────────────────────────────────────────
 async function showPushNotification(title: string, body: string, tag = 'spdidos') {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
     if ('serviceWorker' in navigator) {
-      const reg = await Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise<null>(r => setTimeout(() => r(null), 1500)),
-      ]) as ServiceWorkerRegistration | null;
-      const worker = reg?.active ?? navigator.serviceWorker.controller ?? reg?.waiting;
-      if (worker) {
-        worker.postMessage({ type: 'SHOW_NOTIFICATION', title, body, tag });
-        return;
-      }
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body,
+        icon:               '/logo_high_resolution.png',
+        badge:              '/logo_high_resolution.png',
+        tag,
+        requireInteraction: true,
+      } as NotificationOptions & { vibrate: number[] } as NotificationOptions);
+      return;
     }
-    // Fallback: direct Notification API
-    new Notification(title, { body, icon: '/logo_high_resolution.png', tag });
   } catch { /* ignore */ }
+  try { new Notification(title, { body, icon: '/logo_high_resolution.png', tag }); } catch { }
 }
 
 function AppContent() {
@@ -276,11 +275,13 @@ function AppContent() {
 
 
   useEffect(() => {
-    if (!user?.id) return;
-    const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
-      const active = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
-      // Notify for any arrived order not yet notified (works on first load too)
-      active.forEach(o => {
+    if (!user?.id || user.role !== 'client') return;
+
+    // Latest snapshot kept so visibilitychange can re-check immediately
+    let latestActive: Order[] = [];
+
+    const notify = (orders: Order[]) => {
+      orders.forEach(o => {
         if (o.status === 'arrived' && !arrivedNotifiedIds.current.has(o.id)) {
           arrivedNotifiedIds.current.add(o.id);
           setArrivedOrderId(o.id);
@@ -288,10 +289,32 @@ function AppContent() {
           showPushNotification('¡Tu repartidor llegó! 🛵', 'Está en tu puerta esperando — abre la app para confirmar', 'arrived');
         }
       });
+    };
+
+    const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
+      const active = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
+      latestActive = active;
+      notify(active);
       setActiveOrders(active);
     });
-    return () => { unsub(); soundService.stopRinging(); };
-  }, [user?.id]);
+
+    // When screen unlocks / tab becomes visible again, clear 'arrived' IDs so
+    // the notification re-fires in case it was missed while the tab was suspended
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      latestActive
+        .filter(o => o.status === 'arrived')
+        .forEach(o => arrivedNotifiedIds.current.delete(o.id));
+      notify(latestActive);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      unsub();
+      soundService.stopRinging();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user?.id, user?.role]);
 
   // Global subscription for business users — active regardless of current tab
   useEffect(() => {
