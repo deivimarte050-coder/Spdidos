@@ -1,90 +1,88 @@
 /**
- * SoundService — Web Audio API phone ringtone that loops until stopped.
+ * SoundService — Continuous phone-ring notification sound.
  *
- * Browser autoplay policy requires the AudioContext to be "unlocked" via a
- * prior user gesture (click / touch / key).  We register global listeners so
- * the context is resumed as soon as the user first interacts with the page,
- * which happens long before any Firestore notification fires in practice.
+ * Uses a programmatically-generated PCM WAV (no external files) played via
+ * HTMLAudioElement.  Browsers allow audio.play() from any context once the
+ * user has interacted with the page (login click, navigation, etc.).
+ *
+ * On first user interaction we play-then-immediately-pause to "warm up" the
+ * element so later autoplay calls succeed even from Firestore callbacks.
  */
+
+/** Build a WAV data-URI: two 440+480 Hz beeps separated by silence. */
+function buildRingWav(): string {
+  const SR   = 8000;   // sample rate (Hz)
+  const dur  = 2.2;    // total seconds (matches loop interval)
+  const nSmp = Math.floor(SR * dur);
+  const buf  = new ArrayBuffer(44 + nSmp * 2);
+  const dv   = new DataView(buf);
+
+  const str = (o: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  str(0,  'RIFF'); dv.setUint32(4,  36 + nSmp * 2, true);
+  str(8,  'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
+  dv.setUint16(32, 2, true);  dv.setUint16(34, 16, true);
+  str(36, 'data'); dv.setUint32(40, nSmp * 2, true);
+
+  for (let i = 0; i < nSmp; i++) {
+    const t = i / SR;
+    // Beep 1: 0.00–0.38 s   Beep 2: 0.50–0.88 s   rest: silence
+    const on = (t < 0.38) || (t >= 0.50 && t < 0.88);
+    const amp = on
+      ? 0.28 * Math.sin(2 * Math.PI * 440 * t) +
+        0.28 * Math.sin(2 * Math.PI * 480 * t)
+      : 0;
+    dv.setInt16(44 + i * 2, Math.round(amp * 32767), true);
+  }
+
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
 class SoundService {
-  private ctx: AudioContext | null = null;
-  private loopId: ReturnType<typeof setInterval> | null = null;
+  private audio: HTMLAudioElement;
   private active = false;
+  private warmedUp = false;
 
   constructor() {
-    // Unlock the AudioContext on ANY user interaction so it is ready before
-    // a notification fires from a Firestore callback.
-    const unlock = () => {
-      // getCtx() creates the AudioContext if it doesn't exist yet.
-      // Calling this inside a user-gesture handler lets the browser put it
-      // directly into "running" state (or allows resume() to succeed).
-      const ctx = this.getCtx();
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
+    this.audio       = new Audio(buildRingWav());
+    this.audio.loop  = true;
+    this.audio.volume = 1;
+
+    // Warm up: play-then-pause on first user interaction so later calls
+    // from Firestore callbacks are guaranteed to succeed.
+    const warmUp = () => {
+      if (this.warmedUp) return;
+      this.warmedUp = true;
+      this.audio.play().then(() => {
+        if (!this.active) {
+          this.audio.pause();
+          this.audio.currentTime = 0;
+        }
+      }).catch(() => {});
     };
-    document.addEventListener('click',    unlock, { passive: true });
-    document.addEventListener('touchend', unlock, { passive: true });
-    document.addEventListener('keydown',  unlock, { passive: true });
+    document.addEventListener('click',    warmUp, { passive: true });
+    document.addEventListener('touchend', warmUp, { passive: true });
+    document.addEventListener('keydown',  warmUp, { passive: true });
   }
 
-  private getCtx(): AudioContext {
-    if (!this.ctx || this.ctx.state === 'closed') {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    return this.ctx;
-  }
-
-  /** Play one "ring" cycle: two dual-tone beeps (classic phone). */
-  private async ring(): Promise<void> {
-    const ctx = this.getCtx();
-    // Must await resume — otherwise oscillators schedule against a suspended clock
-    if (ctx.state === 'suspended') {
-      try { await ctx.resume(); } catch { return; }
-    }
-    if (ctx.state !== 'running') return;
-
-    const now = ctx.currentTime;
-
-    const schedule = (offset: number, dur: number) => {
-      [440, 480].forEach(freq => {
-        const osc  = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, now + offset);
-        gain.gain.linearRampToValueAtTime(0.20, now + offset + 0.02);
-        gain.gain.setValueAtTime(0.20, now + offset + dur - 0.02);
-        gain.gain.linearRampToValueAtTime(0, now + offset + dur);
-        osc.start(now + offset);
-        osc.stop(now + offset + dur);
-      });
-    };
-
-    schedule(0.00, 0.40);  // first beep
-    schedule(0.55, 0.40);  // second beep
-  }
-
-  /** Start continuous ringing. Stops only when stopRinging() is called. */
   startRinging() {
     if (this.active) return;
     this.active = true;
-    this.ring();
-    this.loopId = setInterval(() => {
-      if (!this.active) return;
-      this.ring();
-    }, 2200);
+    this.audio.currentTime = 0;
+    this.audio.play().catch(() => {
+      // Last resort: try again on next tick (handles edge-case timing)
+      setTimeout(() => { if (this.active) this.audio.play().catch(() => {}); }, 100);
+    });
   }
 
-  /** Stop all ringing immediately. */
   stopRinging() {
     this.active = false;
-    if (this.loopId !== null) {
-      clearInterval(this.loopId);
-      this.loopId = null;
-    }
+    this.audio.pause();
+    this.audio.currentTime = 0;
   }
 
   get isRinging() { return this.active; }
