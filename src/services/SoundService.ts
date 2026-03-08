@@ -54,6 +54,8 @@ class SoundService {
 
     // Warm up: play-then-pause on first user interaction so later calls
     // from Firestore callbacks are guaranteed to succeed.
+    // Also starts a silent AudioContext loop to keep the background tab alive
+    // so Chrome doesn't suspend JS execution (and Firestore subscriptions keep firing).
     const warmUp = () => {
       if (this.warmedUp) return;
       this.warmedUp = true;
@@ -63,10 +65,30 @@ class SoundService {
           this.audio.currentTime = 0;
         }
       }).catch(() => {});
+      this.startSilentLoop();
     };
     document.addEventListener('click',    warmUp, { passive: true });
     document.addEventListener('touchend', warmUp, { passive: true });
     document.addEventListener('keydown',  warmUp, { passive: true });
+  }
+
+  /** Plays a completely inaudible 1-sample loop via Web Audio API.
+   *  Chrome treats the tab as "using audio" and will not suspend it,
+   *  allowing Firestore subscriptions to keep delivering updates in background. */
+  private startSilentLoop() {
+    try {
+      const ctx = new AudioContext();
+      const buf = ctx.createBuffer(1, 1, 22050); // 1 sample ≈ silent
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop   = true;
+      // Connect through a GainNode at 0 gain so literally nothing is audible
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      src.start(0);
+    } catch { /* AudioContext unavailable — ignore */ }
   }
 
   startRinging() {
