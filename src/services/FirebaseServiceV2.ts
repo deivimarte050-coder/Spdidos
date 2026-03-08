@@ -24,7 +24,8 @@ const COLLECTIONS = {
   ORDERS: 'orders',
   DELIVERY_PERSONS: 'deliveryPersons',
   DELIVERY_LOCATIONS: 'delivery_locations',
-  CLIENT_LOCATIONS: 'client_locations'
+  CLIENT_LOCATIONS: 'client_locations',
+  FCM_TOKENS: 'fcm_tokens'
 };
 
 // Helper para convertir Timestamp a string
@@ -384,6 +385,20 @@ class FirebaseServiceV2 {
       console.log('✅ [FirebaseV2] Datos de ejemplo creados');
     } catch (error) {
       console.error('❌ [FirebaseV2] Error inicializando datos:', error);
+    }
+  }
+
+  async saveFCMToken(userId: string, token: string, role: string, businessId?: string) {
+    try {
+      await setDoc(doc(db, COLLECTIONS.FCM_TOKENS, userId), {
+        token,
+        role,
+        userId,
+        businessId: businessId || null,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('[FCM] Error saving token:', err);
     }
   }
 }

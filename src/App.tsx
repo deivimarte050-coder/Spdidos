@@ -17,6 +17,7 @@ import DataService, { Business } from './services/DataService';
 import FirebaseServiceV2 from './services/FirebaseServiceV2';
 import EventService from './services/EventService';
 import { soundService } from './services/SoundService';
+import { initFCMToken, listenFCMForeground } from './services/FCMService';
 import { SPM_CENTER } from './constants';
 
 const ORDER_STEPS = [
@@ -240,15 +241,20 @@ function AppContent() {
   const deliveryKnownReadyIds  = useRef<Set<string>>(new Set());
   const deliveryGlobalInited   = useRef(false);
 
-  // ── Service Worker registration + notification permission ───────────────────
+  // ── FCM: register SW, request permission, get token, start foreground listener
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
+    if (!user?.id) return;
+    initFCMToken().then(token => {
+      if (!token) return;
+      FirebaseServiceV2.saveFCMToken(
+        user.id,
+        token,
+        user.role,
+        (user as any).businessId ?? undefined
+      );
+    });
+    listenFCMForeground();
+  }, [user?.id]);
 
 
   useEffect(() => {

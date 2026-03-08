@@ -1,4 +1,33 @@
 // Spdidos Service Worker — handles push notifications and background messages
+// Must be at root scope so Firebase Messaging can use it
+
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyA0d21nelkgyJ0DGtlEdmzLG6AgMgD8GmE",
+  authDomain: "spdidos-8edda.firebaseapp.com",
+  projectId: "spdidos-8edda",
+  storageBucket: "spdidos-8edda.firebasestorage.app",
+  messagingSenderId: "573150906777",
+  appId: "1:573150906777:web:0ac9b6294842a031736b08"
+});
+
+const messaging = firebase.messaging();
+
+// FCM background messages (received when browser is in background / phone locked)
+messaging.onBackgroundMessage((payload) => {
+  const notif = payload.notification || {};
+  self.registration.showNotification(notif.title || 'Spdidos', {
+    body:    notif.body  || '',
+    icon:    notif.icon  || '/logo_high_resolution.png',
+    badge:                  '/logo_high_resolution.png',
+    vibrate: [300, 100, 300, 100, 300],
+    requireInteraction: true,
+    tag: payload.data?.tag || 'spdidos-fcm',
+  });
+});
+
 const CACHE = 'spdidos-v1';
 
 self.addEventListener('install', () => self.skipWaiting());
