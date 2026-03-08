@@ -207,13 +207,31 @@ const TrackingView: React.FC<{
   );
 };
 
+// Register SW as early as possible (before user logs in) so notifications work immediately
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission().catch(() => {});
+}
+
 // ─── Push notification helper (uses SW to show OS notification) ──────────────
 async function showPushNotification(title: string, body: string, tag = 'spdidos') {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  if (!('serviceWorker' in navigator)) return;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    reg.active?.postMessage({ type: 'SHOW_NOTIFICATION', title, body, tag });
+    if ('serviceWorker' in navigator) {
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>(r => setTimeout(() => r(null), 1500)),
+      ]) as ServiceWorkerRegistration | null;
+      const worker = reg?.active ?? navigator.serviceWorker.controller ?? reg?.waiting;
+      if (worker) {
+        worker.postMessage({ type: 'SHOW_NOTIFICATION', title, body, tag });
+        return;
+      }
+    }
+    // Fallback: direct Notification API
+    new Notification(title, { body, icon: '/logo_high_resolution.png', tag });
   } catch { /* ignore */ }
 }
 
