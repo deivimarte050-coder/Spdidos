@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Clock, Star, Plus, Minus, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation } from 'lucide-react';
+import { ChevronLeft, Clock, Star, Plus, Minus, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import Layout from './components/Layout';
@@ -58,6 +58,72 @@ const ArrivalNotificationModal: React.FC<{ onConfirm: () => void }> = ({ onConfi
           <CheckCircle2 className="w-6 h-6" /> Confirmar que el delivery llegó
         </button>
         <p className="text-center text-xs text-gray-400 mt-3">Al confirmar, el pedido se marcará como entregado</p>
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
+// ─── Business new-order notification modal (global, always mounted) ──────────
+const IncomingOrderModal: React.FC<{
+  order: Order;
+  onAccept: () => void;
+  onReject: () => void;
+}> = ({ order, onAccept, onReject }) => (
+  <motion.div
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+  >
+    <motion.div
+      initial={{ scale: 0.8, y: 40 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.8, y: 40 }}
+      className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
+    >
+      <div className="bg-yellow-400 p-6 text-center relative overflow-hidden">
+        <motion.div
+          animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1 }}
+          className="w-16 h-16 bg-white/30 rounded-full flex items-center justify-center mx-auto mb-3"
+        >
+          <Bell className="w-9 h-9 text-white" />
+        </motion.div>
+        <p className="text-white font-black text-xl">¡Nuevo Pedido!</p>
+        <div className="flex items-center justify-center gap-1.5 mt-1">
+          <Volume2 className="w-4 h-4 text-white/80" />
+          <p className="text-white/90 text-sm font-bold">Sonando...</p>
+        </div>
+      </div>
+      <div className="p-5 space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-bold text-gray-400 uppercase">Pedido #{order.id.slice(-6).toUpperCase()}</span>
+          <span className="text-lg font-black text-emerald-600">RD$ {order.total?.toFixed(0)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-gray-400" />
+          <span className="font-bold text-gray-800">{order.clientName}</span>
+        </div>
+        {order.deliveryAddress && (
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-gray-400" />
+            <span className="text-sm text-gray-600">{order.deliveryAddress}</span>
+          </div>
+        )}
+        <div className="bg-gray-50 rounded-xl p-3 space-y-1">
+          {order.items?.map(item => (
+            <div key={item.id} className="flex justify-between text-sm">
+              <span className="text-gray-700"><span className="font-bold">{item.quantity}x</span> {item.name}</span>
+              <span className="font-bold">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="px-5 pb-6 grid grid-cols-2 gap-3">
+        <button onClick={onReject}
+          className="py-4 bg-red-50 text-red-600 rounded-2xl font-black text-base hover:bg-red-100 transition-all flex items-center justify-center gap-2">
+          <X className="w-5 h-5" /> Rechazar
+        </button>
+        <button onClick={onAccept}
+          className="py-4 bg-emerald-500 text-white rounded-2xl font-black text-base hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200">
+          <CheckCircle2 className="w-5 h-5" /> Aceptar
+        </button>
       </div>
     </motion.div>
   </motion.div>
@@ -154,6 +220,11 @@ function AppContent() {
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevOrderStatuses = useRef<Record<string, string>>({});
 
+  // ── Business global notification (fires from any tab) ───────────────────────
+  const [incomingOrder, setIncomingOrder] = useState<Order | null>(null);
+  const bizNotifiedIds  = useRef<Set<string>>(new Set());
+  const bizShowingModal = useRef(false);
+
   useEffect(() => {
     if (!user?.id) return;
     const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
@@ -171,6 +242,47 @@ function AppContent() {
     });
     return () => { unsub(); soundService.stopRinging(); };
   }, [user?.id]);
+
+  // Global subscription for business users — active regardless of current tab
+  useEffect(() => {
+    if (user?.role !== 'business') return;
+    const businessId = (user as any)?.businessId;
+    if (!businessId) return;
+    const unsub = FirebaseServiceV2.subscribeToBusinessOrders(businessId, (data) => {
+      if (!bizShowingModal.current) {
+        const pending = data.find(
+          o => o.status === 'pending' && !bizNotifiedIds.current.has(o.id)
+        );
+        if (pending) {
+          bizNotifiedIds.current.add(pending.id);
+          bizShowingModal.current = true;
+          setIncomingOrder(pending);
+          soundService.startRinging();
+        }
+      }
+    });
+    return () => { unsub(); soundService.stopRinging(); };
+  }, [user?.role, (user as any)?.businessId]);
+
+  const handleAcceptBusiness = async () => {
+    if (!incomingOrder) return;
+    soundService.stopRinging();
+    bizShowingModal.current = false;
+    const order = incomingOrder;
+    setIncomingOrder(null);
+    try { await FirebaseServiceV2.updateOrder(order.id, { status: 'accepted' }); }
+    catch (err) { console.error('Error aceptando pedido:', err); }
+  };
+
+  const handleRejectBusiness = async () => {
+    if (!incomingOrder) return;
+    soundService.stopRinging();
+    bizShowingModal.current = false;
+    const order = incomingOrder;
+    setIncomingOrder(null);
+    try { await FirebaseServiceV2.updateOrder(order.id, { status: 'cancelled' }); }
+    catch (err) { console.error('Error rechazando pedido:', err); }
+  };
 
   const handleConfirmArrival = async () => {
     if (!arrivedOrderId) return;
@@ -305,7 +417,20 @@ function AppContent() {
 
   // If user is not a client, show their specific view directly
   if (user.role === 'delivery') return <DeliveryView />;
-  if (user.role === 'business') return <BusinessView />;
+  if (user.role === 'business') return (
+    <>
+      <AnimatePresence>
+        {incomingOrder && (
+          <IncomingOrderModal
+            order={incomingOrder}
+            onAccept={handleAcceptBusiness}
+            onReject={handleRejectBusiness}
+          />
+        )}
+      </AnimatePresence>
+      <BusinessView />
+    </>
+  );
   if (user.role === 'admin') return <AdminView />;
 
   return (
