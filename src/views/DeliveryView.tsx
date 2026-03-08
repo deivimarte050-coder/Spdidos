@@ -206,8 +206,8 @@ const DeliveryView: React.FC = () => {
   const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const prevReadyIds = useRef<Set<string>>(new Set());
-  const isFirstDeliveryLoad = useRef(true);
+  const knownReadyIds  = useRef<Set<string>>(new Set());
+  const deliveryInited = useRef(false);
 
   // Subscribe to available (ready) orders + ring when new ones arrive
   useEffect(() => {
@@ -215,20 +215,23 @@ const DeliveryView: React.FC = () => {
       const available = orders.filter(o => o.status === 'ready');
       const mine = orders.find(o => o.deliveryId === user?.id && (o.status === 'on_the_way' || o.status === 'arrived'));
 
-      if (!isFirstDeliveryLoad.current) {
-        const newReady = available.filter(o => !prevReadyIds.current.has(o.id));
-        if (newReady.length > 0) {
+      if (!deliveryInited.current) {
+        // First snapshot: record existing ready orders so we don't ring for them
+        available.forEach(o => knownReadyIds.current.add(o.id));
+        deliveryInited.current = true;
+      } else {
+        // Subsequent snapshots: ring for any NEW ready orders
+        const hasNew = available.some(o => !knownReadyIds.current.has(o.id));
+        if (hasNew && !mine) {
           soundService.startRinging();
         }
-        // Stop ringing if no more ready orders
-        if (available.length === 0 && soundService.isRinging) {
+        // Stop ringing when no ready orders remain (another delivery accepted)
+        if (available.length === 0) {
           soundService.stopRinging();
         }
-      } else {
-        available.forEach(o => prevReadyIds.current.add(o.id));
-        isFirstDeliveryLoad.current = false;
+        available.forEach(o => knownReadyIds.current.add(o.id));
       }
-      available.forEach(o => prevReadyIds.current.add(o.id));
+
       setAvailableOrders(available);
       setMyOrder(mine || null);
     });

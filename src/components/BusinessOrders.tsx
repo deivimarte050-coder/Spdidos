@@ -218,34 +218,29 @@ const BusinessOrders: React.FC = () => {
   const [filter, setFilter] = useState<string>('active');
   const [loading, setLoading] = useState(true);
   const [incomingOrder, setIncomingOrder] = useState<Order | null>(null);
-  const seenOrderIds = useRef<Set<string>>(new Set());
-  const isFirstLoad = useRef(true);
+  const notifiedIds  = useRef<Set<string>>(new Set());
+  const showingModal  = useRef(false);
 
   useEffect(() => {
     const businessId = (user as any)?.businessId;
-    if (!businessId) {
-      setLoading(false);
-      return;
-    }
+    if (!businessId) { setLoading(false); return; }
+
     const unsub = FirebaseServiceV2.subscribeToBusinessOrders(businessId, (data) => {
-      // Detect brand-new pending orders (not seen before)
-      if (!isFirstLoad.current) {
-        const newPending = data.find(
-          o => o.status === 'pending' && !seenOrderIds.current.has(o.id)
-        );
-        if (newPending) {
-          setIncomingOrder(newPending);
-          soundService.startRinging();
-        }
-      } else {
-        // On first load, mark all existing orders as already seen
-        data.forEach(o => seenOrderIds.current.add(o.id));
-        isFirstLoad.current = false;
-      }
-      // Always update seen set
-      data.forEach(o => seenOrderIds.current.add(o.id));
       setOrders(data);
       setLoading(false);
+
+      // Ring for the first pending order we haven't notified about yet
+      if (!showingModal.current) {
+        const pending = data.find(
+          o => o.status === 'pending' && !notifiedIds.current.has(o.id)
+        );
+        if (pending) {
+          notifiedIds.current.add(pending.id);
+          showingModal.current = true;
+          setIncomingOrder(pending);
+          soundService.startRinging();
+        }
+      }
     });
     return () => { unsub(); soundService.stopRinging(); };
   }, [(user as any)?.businessId]);
@@ -261,6 +256,7 @@ const BusinessOrders: React.FC = () => {
   const handleAcceptIncoming = async () => {
     if (!incomingOrder) return;
     soundService.stopRinging();
+    showingModal.current = false;
     setIncomingOrder(null);
     await handleUpdateStatus(incomingOrder.id, 'accepted');
   };
@@ -268,6 +264,7 @@ const BusinessOrders: React.FC = () => {
   const handleRejectIncoming = async () => {
     if (!incomingOrder) return;
     soundService.stopRinging();
+    showingModal.current = false;
     setIncomingOrder(null);
     await handleUpdateStatus(incomingOrder.id, 'cancelled');
   };
