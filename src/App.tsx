@@ -218,25 +218,29 @@ function AppContent() {
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const prevOrderStatuses = useRef<Record<string, string>>({});
+  // ── Client: notify whenever an order is (or becomes) 'arrived' ─────────────
+  const arrivedNotifiedIds = useRef<Set<string>>(new Set());
 
   // ── Business global notification (fires from any tab) ───────────────────────
   const [incomingOrder, setIncomingOrder] = useState<Order | null>(null);
   const bizNotifiedIds  = useRef<Set<string>>(new Set());
   const bizShowingModal = useRef(false);
 
+  // ── Delivery global notification (fires from any tab) ────────────────────────
+  const deliveryKnownReadyIds  = useRef<Set<string>>(new Set());
+  const deliveryGlobalInited   = useRef(false);
+
   useEffect(() => {
     if (!user?.id) return;
     const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
       const active = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
-      // Detect when any order transitions to 'arrived'
+      // Notify for any arrived order not yet notified (works on first load too)
       active.forEach(o => {
-        const prev = prevOrderStatuses.current[o.id];
-        if (prev && prev !== 'arrived' && o.status === 'arrived') {
+        if (o.status === 'arrived' && !arrivedNotifiedIds.current.has(o.id)) {
+          arrivedNotifiedIds.current.add(o.id);
           setArrivedOrderId(o.id);
           soundService.startRinging();
         }
-        prevOrderStatuses.current[o.id] = o.status;
       });
       setActiveOrders(active);
     });
@@ -283,6 +287,26 @@ function AppContent() {
     try { await FirebaseServiceV2.updateOrder(order.id, { status: 'cancelled' }); }
     catch (err) { console.error('Error rechazando pedido:', err); }
   };
+
+  // Global subscription for delivery users — rings on new ready orders from any tab
+  useEffect(() => {
+    if (user?.role !== 'delivery') return;
+    const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
+      const available = orders.filter(o => o.status === 'ready');
+      const myActive  = orders.find(o => o.deliveryId === user.id && (o.status === 'on_the_way' || o.status === 'arrived'));
+
+      if (!deliveryGlobalInited.current) {
+        available.forEach(o => deliveryKnownReadyIds.current.add(o.id));
+        deliveryGlobalInited.current = true;
+      } else {
+        const hasNew = available.some(o => !deliveryKnownReadyIds.current.has(o.id));
+        if (hasNew && !myActive) soundService.startRinging();
+        if (available.length === 0)  soundService.stopRinging();
+        available.forEach(o => deliveryKnownReadyIds.current.add(o.id));
+      }
+    });
+    return () => { unsub(); soundService.stopRinging(); };
+  }, [user?.role, user?.id]);
 
   const handleConfirmArrival = async () => {
     if (!arrivedOrderId) return;

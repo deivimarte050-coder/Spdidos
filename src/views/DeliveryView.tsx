@@ -206,36 +206,15 @@ const DeliveryView: React.FC = () => {
   const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const knownReadyIds  = useRef<Set<string>>(new Set());
-  const deliveryInited = useRef(false);
-
-  // Subscribe to available (ready) orders + ring when new ones arrive
+  // Subscribe to available (ready) orders — sound is handled globally in App.tsx
   useEffect(() => {
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
       const available = orders.filter(o => o.status === 'ready');
       const mine = orders.find(o => o.deliveryId === user?.id && (o.status === 'on_the_way' || o.status === 'arrived'));
-
-      if (!deliveryInited.current) {
-        // First snapshot: record existing ready orders so we don't ring for them
-        available.forEach(o => knownReadyIds.current.add(o.id));
-        deliveryInited.current = true;
-      } else {
-        // Subsequent snapshots: ring for any NEW ready orders
-        const hasNew = available.some(o => !knownReadyIds.current.has(o.id));
-        if (hasNew && !mine) {
-          soundService.startRinging();
-        }
-        // Stop ringing when no ready orders remain (another delivery accepted)
-        if (available.length === 0) {
-          soundService.stopRinging();
-        }
-        available.forEach(o => knownReadyIds.current.add(o.id));
-      }
-
       setAvailableOrders(available);
       setMyOrder(mine || null);
     });
-    return () => { unsub(); soundService.stopRinging(); };
+    return unsub;
   }, [user?.id]);
 
   // Subscribe to client real-time location when on active delivery
