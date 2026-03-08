@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Star, Clock, MapPin, ChevronRight } from 'lucide-react';
+import { Star, Clock, ChevronRight, MapPin } from 'lucide-react';
 import { Business } from '../services/DataService';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 
@@ -69,79 +69,61 @@ const BusinessList: React.FC<BusinessListProps> = ({ onBusinessSelect, showOnlyA
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black font-display text-gray-900">
-          Negocios Disponibles
+        <h2 className="text-xl font-black text-gray-900">
+          <span className="font-black">Especialmente</span> para ti
         </h2>
-        <span className="text-sm text-gray-400">
-          {businesses.length} negocios
-        </span>
+        <button className="flex items-center gap-1 text-sm font-bold text-primary hover:text-primary/80 transition-colors">
+          Ver más <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {businesses.map((business, index) => (
           <motion.div
             key={business.id}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
+            transition={{ delay: index * 0.07 }}
             onClick={() => onBusinessSelect?.(business)}
-            className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all cursor-pointer group"
+            className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer group hover:shadow-md transition-all"
           >
-            {/* Imagen del negocio */}
-            <div className="relative h-48 overflow-hidden">
-              <img 
-                src={business.image} 
+            {/* Food photo */}
+            <div className="relative h-32 lg:h-40 overflow-hidden">
+              <img
+                src={business.image}
                 alt={business.name}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=280&fit=crop';
+                }}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-              
-              {/* Badge de estado */}
-              <div className="absolute top-4 right-4">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  business.status === 'active' 
-                    ? 'bg-emerald-500 text-white' 
-                    : 'bg-gray-500 text-white'
-                }`}>
-                  {business.status === 'active' ? 'Abierto' : 'Cerrado'}
-                </span>
-              </div>
-
-              {/* Rating */}
-              <div className="absolute bottom-4 left-4 flex items-center gap-2">
-                <div className="flex items-center bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg">
-                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                  <span className="text-sm font-bold text-gray-900">{business.rating}</span>
+              {business.status !== 'active' && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <span className="text-white font-black text-xs bg-black/60 px-3 py-1 rounded-full">Cerrado</span>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Información del negocio */}
-            <div className="p-4">
-              <div className="mb-3">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">{business.name}</h3>
-                <p className="text-sm text-gray-400">{business.category}</p>
+            {/* Info */}
+            <div className="p-3">
+              <h3 className="font-black text-gray-900 text-sm leading-tight truncate mb-1.5">{business.name}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-md uppercase tracking-wide">
+                  GRATIS
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                  <Clock className="w-3 h-3" /> 20-35 min
+                </span>
               </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <MapPin className="w-4 h-4" />
-                  <span>{business.address}</span>
+              {business.rating > 0 && (
+                <div className="flex items-center gap-1 mt-1.5">
+                  <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                  <span className="text-[11px] font-bold text-gray-600">{business.rating}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <Clock className="w-4 h-4" />
-                  <span>20-30 min</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-gray-50">
-                <div className="text-sm text-gray-400">
-                  <span className="font-medium">{business.totalOrders}</span> pedidos
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-primary transition-colors" />
-              </div>
+              )}
             </div>
           </motion.div>
         ))}

@@ -12,16 +12,17 @@ import { useAuth } from '../contexts/AuthContext';
 interface BottomNavProps {
   activeView: string;
   onViewChange: (view: any) => void;
+  orderCount?: number;
 }
 
-const BottomNav: React.FC<BottomNavProps> = ({ activeView, onViewChange }) => {
+const BottomNav: React.FC<BottomNavProps> = ({ activeView, onViewChange, orderCount = 0 }) => {
   const { logout } = useAuth();
   const navItems = [
-    { id: 'home', label: 'Inicio', icon: Home },
-    { id: 'orders', label: 'Pedidos', icon: ClipboardList },
-    { id: 'favorites', label: 'Favoritos', icon: Heart },
-    { id: 'profile', label: 'Perfil', icon: User },
-    { id: 'logout', label: 'Salir', icon: LogOut, isAction: true },
+    { id: 'home',      label: 'Inicio',     icon: Home,          badge: 0 },
+    { id: 'orders',    label: 'Pedidos',    icon: ClipboardList, badge: orderCount },
+    { id: 'favorites', label: 'Favoritos', icon: Heart,         badge: 0 },
+    { id: 'profile',   label: 'Perfil',    icon: User,          badge: 0 },
+    { id: 'logout',    label: 'Salir',     icon: LogOut,        badge: 0, isAction: true },
   ];
 
   return (
@@ -45,10 +46,15 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeView, onViewChange }) => {
             <div className="relative">
               <item.icon className={`w-6 h-6 ${isActive ? 'fill-primary/10' : ''} ${item.id === 'logout' ? 'text-red-400' : ''}`} />
               {isActive && (
-                <motion.div 
+                <motion.div
                   layoutId="active-dot"
                   className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-primary border-2 border-white"
                 />
+              )}
+              {item.badge > 0 && !isActive && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+                  {item.badge > 9 ? '9+' : item.badge}
+                </span>
               )}
             </div>
             <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : (item.id === 'logout' ? 'text-red-400' : 'text-gray-400')}`}>

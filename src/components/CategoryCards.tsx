@@ -44,39 +44,40 @@ const categories = [
 const CategoryCards = () => {
   return (
     <div>
-      {/* Mobile View: Large Vertical Stack */}
-      <div className="flex flex-col gap-3 lg:hidden">
+      {/* Mobile: 2×2 grid */}
+      <div className="grid grid-cols-2 gap-3 lg:hidden">
         {categories.map((cat) => (
           <motion.button
             key={cat.id}
-            whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-4 bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-100 text-left group"
+            whileTap={{ scale: 0.97 }}
+            className={`${cat.color} flex items-center gap-3 p-4 rounded-2xl border border-white/60 shadow-sm text-left`}
           >
-            <div className={`${cat.color} p-3 rounded-2xl`}>
-              <cat.icon className={`w-8 h-8 ${cat.iconColor}`} />
+            <div className="bg-white/70 p-2.5 rounded-xl flex-shrink-0">
+              <cat.icon className={`w-6 h-6 ${cat.iconColor}`} />
             </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-black text-gray-900 tracking-tight leading-none">{cat.title}</span>
-              <span className="text-sm font-medium text-gray-400">{cat.subtitle}</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-black text-gray-900 leading-tight">{cat.title}</span>
+              {cat.subtitle && <span className="text-[11px] font-medium text-gray-500 truncate">{cat.subtitle}</span>}
             </div>
           </motion.button>
         ))}
       </div>
 
-      {/* Desktop View: Horizontal Grid */}
+      {/* Desktop: 4-col row */}
       <div className="hidden lg:grid grid-cols-4 gap-4">
         {categories.map((cat) => (
           <motion.button
             key={cat.id}
-            whileHover={{ y: -4 }}
-            className={`${cat.color} p-6 rounded-3xl flex flex-col items-center text-center gap-3 group transition-all hover:shadow-lg`}
+            whileHover={{ y: -3 }}
+            whileTap={{ scale: 0.98 }}
+            className={`${cat.color} flex items-center gap-4 p-5 rounded-2xl border border-white/60 shadow-sm text-left transition-shadow hover:shadow-md`}
           >
-            <div className="bg-white p-4 rounded-2xl shadow-sm group-hover:scale-110 transition-transform">
-              <cat.icon className={`w-8 h-8 ${cat.iconColor}`} />
+            <div className="bg-white/70 p-3 rounded-xl flex-shrink-0">
+              <cat.icon className={`w-7 h-7 ${cat.iconColor}`} />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-black text-gray-900 tracking-tight">{cat.title}</span>
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest opacity-70">{cat.subtitle}</span>
+              <span className="text-sm font-black text-gray-900 leading-tight">{cat.title}</span>
+              {cat.subtitle && <span className="text-[11px] font-medium text-gray-500">{cat.subtitle}</span>}
             </div>
           </motion.button>
         ))}

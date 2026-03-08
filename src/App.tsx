@@ -617,11 +617,12 @@ function AppContent() {
           <ArrivalNotificationModal onConfirm={handleConfirmArrival} />
         )}
       </AnimatePresence>
-    <Layout 
-      activeView={view} 
+    <Layout
+      activeView={view}
       onViewChange={setView}
       cartCount={cart.reduce((a, b) => a + b.quantity, 0)}
       onCartClick={() => setIsCartOpen(true)}
+      orderCount={activeOrders.length}
     >
       <AnimatePresence mode="wait">
         {view === 'home' && (
