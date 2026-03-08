@@ -388,6 +388,15 @@ class FirebaseServiceV2 {
     }
   }
 
+  async updateUserProfile(userId: string, data: Partial<{ name: string; phone: string; whatsapp: string }>): Promise<void> {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.USERS, userId), data);
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error actualizando perfil:', error);
+      throw error;
+    }
+  }
+
   async saveFCMToken(userId: string, token: string, role: string, businessId?: string) {
     try {
       await setDoc(doc(db, COLLECTIONS.FCM_TOKENS, userId), {

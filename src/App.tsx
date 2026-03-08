@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Clock, Star, Plus, Minus, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2 } from 'lucide-react';
+import { ChevronLeft, Clock, Star, Plus, Minus, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import Layout from './components/Layout';
@@ -314,8 +314,118 @@ async function showPushNotification(title: string, body: string, tag = 'spdidos'
   try { new Notification(title, { body, icon: '/logo_high_resolution.png', tag }); } catch { }
 }
 
+// ─── Client Profile View ──────────────────────────────────────────────────────
+const ProfileView: React.FC<{ onViewChange: (v: any) => void }> = ({ onViewChange }) => {
+  const { user, logout, updateUser } = useAuth();
+  const [form, setForm] = useState({ name: user?.name ?? '', phone: user?.phone ?? '', whatsapp: user?.whatsapp ?? '' });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateUser({ name: form.name.trim(), phone: form.phone.trim(), whatsapp: form.whatsapp.trim() });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      alert('Error al guardar. Intenta de nuevo.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <motion.div
+      key="profile"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="px-4 lg:px-8 py-8 max-w-lg mx-auto space-y-6"
+    >
+      <h2 className="text-2xl font-black text-gray-900">Mi Perfil</h2>
+
+      {/* Avatar */}
+      <div className="flex items-center gap-4 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/20 flex-shrink-0">
+          <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name}`} alt="avatar" className="w-full h-full" />
+        </div>
+        <div>
+          <p className="font-black text-gray-900 text-lg">{user?.name}</p>
+          <p className="text-sm text-gray-400">{user?.email}</p>
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
+        <h3 className="font-bold text-gray-700 text-sm uppercase tracking-widest">Información personal</h3>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-gray-500 flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Nombre completo</span>
+          <input
+            type="text"
+            value={form.name}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            className="border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+            placeholder="Tu nombre"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-gray-500 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Correo electrónico</span>
+          <input
+            type="email"
+            value={user?.email ?? ''}
+            disabled
+            className="border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm font-medium text-gray-400 cursor-not-allowed"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-gray-500 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> Teléfono</span>
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+            className="border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+            placeholder="809-XXX-XXXX"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-gray-500 flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> WhatsApp</span>
+          <input
+            type="tel"
+            value={form.whatsapp}
+            onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))}
+            className="border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+            placeholder="809-XXX-XXXX"
+          />
+        </label>
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className={`w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all ${
+            saved ? 'bg-emerald-500 text-white' : 'bg-primary text-white hover:bg-primary/90'
+          }`}
+        >
+          {saved ? <><CheckCircle2 className="w-4 h-4" /> ¡Guardado!</> : saving ? 'Guardando…' : <><Save className="w-4 h-4" /> Guardar cambios</>}
+        </button>
+      </div>
+
+      {/* Logout */}
+      <button
+        onClick={logout}
+        className="w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 border-2 border-red-100 text-red-500 hover:bg-red-50 transition-all"
+      >
+        <LogOut className="w-4 h-4" /> Cerrar sesión
+      </button>
+    </motion.div>
+  );
+};
+
 function AppContent() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const [view, setView] = useState<View>('home');
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -988,6 +1098,35 @@ function AppContent() {
                   ))}
                 </div>
               )}
+            </div>
+          </motion.div>
+        )}
+
+        {view === 'profile' && (
+          <ProfileView onViewChange={setView} />
+        )}
+
+        {view === 'favorites' && (
+          <motion.div
+            key="favorites"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="px-4 lg:px-8 py-8"
+          >
+            <h2 className="text-2xl font-black text-gray-900 mb-8">Mis Favoritos</h2>
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                <Heart className="w-10 h-10 text-red-300" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Aún no tienes favoritos</h3>
+              <p className="text-gray-400 text-sm max-w-xs">Guarda tus negocios favoritos para encontrarlos rápido</p>
+              <button
+                onClick={() => setView('home')}
+                className="mt-6 bg-primary text-white font-bold px-6 py-3 rounded-2xl hover:bg-primary/90 transition-all"
+              >
+                Explorar negocios
+              </button>
             </div>
           </motion.div>
         )}

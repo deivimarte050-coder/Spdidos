@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import HybridDataServiceV2 from '../services/HybridDataServiceV2';
+import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   register: (userData: Omit<User, 'id'>) => Promise<void>;
   logout: () => void;
+  updateUser: (data: Partial<User>) => Promise<void>;
   isLoading: boolean;
   error: string | null;
   clearError: () => void;
@@ -142,12 +144,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('delivery_user_session');
   };
 
+  const updateUser = async (data: Partial<User>) => {
+    if (!user) return;
+    try {
+      await FirebaseServiceV2.updateUserProfile(user.id, data as any);
+      const updated = { ...user, ...data };
+      setUser(updated);
+      localStorage.setItem('delivery_user_session', JSON.stringify(updated));
+    } catch (err) {
+      console.error('❌ Error actualizando perfil:', err);
+      throw err;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       login, 
       register, 
       logout,
+      updateUser,
       isLoading,
       error,
       clearError
