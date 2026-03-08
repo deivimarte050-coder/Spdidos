@@ -130,6 +130,12 @@ const IncomingOrderModal: React.FC<{
   </motion.div>
 );
 
+/** Deterministic ETA in minutes based on order id to keep it consistent across refreshes */
+function getEtaMinutes(orderId: string, min: number, max: number): number {
+  const hash = orderId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return min + (hash % (max - min + 1));
+}
+
 const TrackingView: React.FC<{
   orderId: string | null;
   orders: Order[];
@@ -139,6 +145,45 @@ const TrackingView: React.FC<{
   const order = orderId ? orders.find(o => o.id === orderId) || orders[0] : orders[0];
   const stepIndex = order ? ORDER_STEPS.findIndex(s => s.status === order.status) : 0;
   const deliverPos: [number, number] = deliveryLocation ? [deliveryLocation.lat, deliveryLocation.lng] : SPM_CENTER;
+
+  const [secsLeft, setSecsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!order?.id) { setSecsLeft(null); return; }
+
+    const isPrep   = order.status === 'preparing';
+    const isOnWay  = order.status === 'on_the_way';
+    if (!isPrep && !isOnWay) { setSecsLeft(null); return; }
+
+    const lsKey    = `spdidos_eta_${order.id}_${order.status}`;
+    const etaMins  = isPrep
+      ? getEtaMinutes(order.id, 20, 30)
+      : getEtaMinutes(order.id, 15, 20);
+    const etaMs    = etaMins * 60 * 1000;
+
+    let startTime  = parseInt(localStorage.getItem(lsKey) ?? '0', 10);
+    if (!startTime) {
+      startTime = Date.now();
+      localStorage.setItem(lsKey, String(startTime));
+    }
+
+    const calc = () => Math.max(0, Math.round((startTime + etaMs - Date.now()) / 1000));
+    setSecsLeft(calc());
+
+    const interval = setInterval(() => {
+      const remaining = calc();
+      setSecsLeft(remaining);
+      if (remaining === 0) clearInterval(interval);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [order?.id, order?.status]);
+
+  const fmtTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = String(secs % 60).padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   return (
     <div className="max-w-lg mx-auto space-y-6 px-4 py-6">
@@ -172,6 +217,41 @@ const TrackingView: React.FC<{
           })}
         </div>
       </div>
+
+      {/* ETA countdown — visible during 'preparing' and 'on_the_way' */}
+      {secsLeft !== null && (order?.status === 'preparing' || order?.status === 'on_the_way') && (
+        <div className={`rounded-2xl p-5 flex items-center gap-4 shadow-sm border ${
+          order.status === 'preparing'
+            ? 'bg-amber-50 border-amber-100'
+            : 'bg-blue-50 border-blue-100'
+        }`}>
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+            order.status === 'preparing' ? 'bg-amber-100' : 'bg-blue-100'
+          }`}>
+            <span className="text-2xl">{order.status === 'preparing' ? '🍳' : '🛵'}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-xs font-bold uppercase tracking-wide mb-0.5 ${
+              order.status === 'preparing' ? 'text-amber-500' : 'text-blue-500'
+            }`}>
+              {order.status === 'preparing' ? 'Tiempo estimado de preparación' : 'Tiempo estimado de llegada'}
+            </p>
+            {secsLeft > 0 ? (
+              <p className={`text-3xl font-black tabular-nums ${
+                order.status === 'preparing' ? 'text-amber-700' : 'text-blue-700'
+              }`}>
+                {fmtTime(secsLeft)} <span className="text-sm font-semibold opacity-60">min</span>
+              </p>
+            ) : (
+              <p className={`text-base font-black animate-pulse ${
+                order.status === 'preparing' ? 'text-amber-600' : 'text-blue-600'
+              }`}>
+                {order.status === 'preparing' ? '¡Casi listo! 🍽️' : '¡Llegando ahora! 📍'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Mapa cuando el repartidor está en camino */}
       {order?.status === 'on_the_way' && deliveryLocation && (
