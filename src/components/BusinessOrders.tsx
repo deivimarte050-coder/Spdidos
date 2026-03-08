@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, MapPin, User, Phone, MessageCircle, CheckCircle2, Package, Truck, ChefHat, Bell, X, AlertCircle, Navigation, Map, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clock, MapPin, User, Phone, MessageCircle, CheckCircle2, Package, Truck, ChefHat, Bell, X, AlertCircle, Navigation, Map, ChevronDown, ChevronUp, Volume2 } from 'lucide-react';
 import { Order } from '../types';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
+import { soundService } from '../services/SoundService';
 import { useAuth } from '../contexts/AuthContext';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -13,8 +14,10 @@ const STATUS_LABELS: Record<string, string> = {
   preparing: 'Preparando',
   ready: 'Listo para Entrega',
   on_the_way: 'En Camino',
+  arrived: 'Repartidor llegó',
   delivered: 'Entregado',
-  cancelled: 'Cancelado'
+  cancelled: 'Cancelado',
+  rejected: 'Rechazado'
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -23,8 +26,10 @@ const STATUS_COLORS: Record<string, string> = {
   preparing: 'bg-orange-100 text-orange-700 border-orange-200',
   ready: 'bg-purple-100 text-purple-700 border-purple-200',
   on_the_way: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  arrived: 'bg-teal-100 text-teal-700 border-teal-200',
   delivered: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  cancelled: 'bg-red-100 text-red-700 border-red-200'
+  cancelled: 'bg-red-100 text-red-700 border-red-200',
+  rejected: 'bg-red-100 text-red-700 border-red-200'
 };
 
 // Navigation helpers
@@ -136,11 +141,85 @@ const ClientLocationCard: React.FC<{ order: Order }> = ({ order }) => {
   );
 };
 
+// ─── Incoming order notification modal ───────────────────────────────────────
+const IncomingOrderModal: React.FC<{
+  order: Order;
+  onAccept: () => void;
+  onReject: () => void;
+}> = ({ order, onAccept, onReject }) => (
+  <motion.div
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+  >
+    <motion.div
+      initial={{ scale: 0.8, y: 40 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.8, y: 40 }}
+      className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
+    >
+      {/* Pulsing header */}
+      <div className="bg-yellow-400 p-6 text-center relative overflow-hidden">
+        <motion.div
+          animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1 }}
+          className="w-16 h-16 bg-white/30 rounded-full flex items-center justify-center mx-auto mb-3"
+        >
+          <Bell className="w-9 h-9 text-white" />
+        </motion.div>
+        <p className="text-white font-black text-xl">¡Nuevo Pedido!</p>
+        <div className="flex items-center justify-center gap-1.5 mt-1">
+          <Volume2 className="w-4 h-4 text-white/80" />
+          <p className="text-white/90 text-sm font-bold">Sonando...</p>
+        </div>
+      </div>
+
+      {/* Order details */}
+      <div className="p-5 space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-bold text-gray-400 uppercase">Pedido #{order.id.slice(-6).toUpperCase()}</span>
+          <span className="text-lg font-black text-emerald-600">RD$ {order.total?.toFixed(0)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-gray-400" />
+          <span className="font-bold text-gray-800">{order.clientName}</span>
+        </div>
+        {order.deliveryAddress && (
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-gray-400" />
+            <span className="text-sm text-gray-600">{order.deliveryAddress}</span>
+          </div>
+        )}
+        <div className="bg-gray-50 rounded-xl p-3 space-y-1">
+          {order.items?.map(item => (
+            <div key={item.id} className="flex justify-between text-sm">
+              <span className="text-gray-700"><span className="font-bold">{item.quantity}x</span> {item.name}</span>
+              <span className="font-bold">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="px-5 pb-6 grid grid-cols-2 gap-3">
+        <button onClick={onReject}
+          className="py-4 bg-red-50 text-red-600 rounded-2xl font-black text-base hover:bg-red-100 transition-all flex items-center justify-center gap-2">
+          <X className="w-5 h-5" /> Rechazar
+        </button>
+        <button onClick={onAccept}
+          className="py-4 bg-emerald-500 text-white rounded-2xl font-black text-base hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200">
+          <CheckCircle2 className="w-5 h-5" /> Aceptar
+        </button>
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
 const BusinessOrders: React.FC = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<string>('active');
   const [loading, setLoading] = useState(true);
+  const [incomingOrder, setIncomingOrder] = useState<Order | null>(null);
+  const seenOrderIds = useRef<Set<string>>(new Set());
+  const isFirstLoad = useRef(true);
 
   useEffect(() => {
     const businessId = (user as any)?.businessId;
@@ -149,10 +228,26 @@ const BusinessOrders: React.FC = () => {
       return;
     }
     const unsub = FirebaseServiceV2.subscribeToBusinessOrders(businessId, (data) => {
+      // Detect brand-new pending orders (not seen before)
+      if (!isFirstLoad.current) {
+        const newPending = data.find(
+          o => o.status === 'pending' && !seenOrderIds.current.has(o.id)
+        );
+        if (newPending) {
+          setIncomingOrder(newPending);
+          soundService.startRinging();
+        }
+      } else {
+        // On first load, mark all existing orders as already seen
+        data.forEach(o => seenOrderIds.current.add(o.id));
+        isFirstLoad.current = false;
+      }
+      // Always update seen set
+      data.forEach(o => seenOrderIds.current.add(o.id));
       setOrders(data);
       setLoading(false);
     });
-    return unsub;
+    return () => { unsub(); soundService.stopRinging(); };
   }, [(user as any)?.businessId]);
 
   const handleUpdateStatus = async (orderId: string, status: string) => {
@@ -161,6 +256,20 @@ const BusinessOrders: React.FC = () => {
     } catch (err) {
       console.error('Error actualizando estado:', err);
     }
+  };
+
+  const handleAcceptIncoming = async () => {
+    if (!incomingOrder) return;
+    soundService.stopRinging();
+    setIncomingOrder(null);
+    await handleUpdateStatus(incomingOrder.id, 'accepted');
+  };
+
+  const handleRejectIncoming = async () => {
+    if (!incomingOrder) return;
+    soundService.stopRinging();
+    setIncomingOrder(null);
+    await handleUpdateStatus(incomingOrder.id, 'cancelled');
   };
 
   const filtered = orders.filter(o => {
@@ -187,6 +296,17 @@ const BusinessOrders: React.FC = () => {
   );
 
   return (
+    <>
+    <AnimatePresence>
+      {incomingOrder && (
+        <IncomingOrderModal
+          order={incomingOrder}
+          onAccept={handleAcceptIncoming}
+          onReject={handleRejectIncoming}
+        />
+      )}
+    </AnimatePresence>
+
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black font-display text-gray-900">Pedidos en Tiempo Real</h2>
@@ -347,6 +467,7 @@ const BusinessOrders: React.FC = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

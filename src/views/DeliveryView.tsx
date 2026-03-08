@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Package, MapPin, CheckCircle2, Navigation, Store, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map, ChevronRight } from 'lucide-react';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
+import { soundService } from '../services/SoundService';
 import { Order } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
@@ -205,16 +206,33 @@ const DeliveryView: React.FC = () => {
   const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevReadyIds = useRef<Set<string>>(new Set());
+  const isFirstDeliveryLoad = useRef(true);
 
-  // Subscribe to available (ready) orders
+  // Subscribe to available (ready) orders + ring when new ones arrive
   useEffect(() => {
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
       const available = orders.filter(o => o.status === 'ready');
-      const mine = orders.find(o => o.deliveryId === user?.id && o.status === 'on_the_way');
+      const mine = orders.find(o => o.deliveryId === user?.id && (o.status === 'on_the_way' || o.status === 'arrived'));
+
+      if (!isFirstDeliveryLoad.current) {
+        const newReady = available.filter(o => !prevReadyIds.current.has(o.id));
+        if (newReady.length > 0) {
+          soundService.startRinging();
+        }
+        // Stop ringing if no more ready orders
+        if (available.length === 0 && soundService.isRinging) {
+          soundService.stopRinging();
+        }
+      } else {
+        available.forEach(o => prevReadyIds.current.add(o.id));
+        isFirstDeliveryLoad.current = false;
+      }
+      available.forEach(o => prevReadyIds.current.add(o.id));
       setAvailableOrders(available);
       setMyOrder(mine || null);
     });
-    return unsub;
+    return () => { unsub(); soundService.stopRinging(); };
   }, [user?.id]);
 
   // Subscribe to client real-time location when on active delivery
@@ -255,6 +273,7 @@ const DeliveryView: React.FC = () => {
   }, [myOrder?.id, myOrder?.status]);
 
   const handleAcceptOrder = async (order: Order) => {
+    soundService.stopRinging(); // stop ringing for this delivery person
     try {
       await FirebaseServiceV2.updateOrder(order.id, {
         status: 'on_the_way',
@@ -263,6 +282,13 @@ const DeliveryView: React.FC = () => {
       });
       await FirebaseServiceV2.updateDeliveryLocation(order.id, myLocation[0], myLocation[1]);
     } catch (err) { console.error('Error aceptando pedido:', err); }
+  };
+
+  const handleArrive = async () => {
+    if (!myOrder) return;
+    try {
+      await FirebaseServiceV2.updateOrder(myOrder.id, { status: 'arrived' });
+    } catch (err) { console.error('Error marcando llegada:', err); }
   };
 
   const handleComplete = async () => {
@@ -470,10 +496,17 @@ const DeliveryView: React.FC = () => {
                       <MessageCircle className="w-4 h-4" /> WhatsApp
                     </a>
                   )}
-                  <button onClick={handleComplete}
-                    className={`flex items-center justify-center gap-2 p-3 bg-emerald-600 text-white rounded-xl font-bold text-sm ${myOrder.clientWhatsapp ? '' : 'col-span-2'}`}>
-                    <CheckCircle2 className="w-4 h-4" /> Marcar Entregado
-                  </button>
+                  {myOrder.status === 'on_the_way' ? (
+                    <button onClick={handleArrive}
+                      className={`flex items-center justify-center gap-2 p-3 bg-teal-600 text-white rounded-xl font-bold text-sm ${myOrder.clientWhatsapp ? '' : 'col-span-2'}`}>
+                      <MapPin className="w-4 h-4" /> Ya llegué
+                    </button>
+                  ) : (
+                    <button onClick={handleComplete}
+                      className={`flex items-center justify-center gap-2 p-3 bg-emerald-600 text-white rounded-xl font-bold text-sm ${myOrder.clientWhatsapp ? '' : 'col-span-2'}`}>
+                      <CheckCircle2 className="w-4 h-4" /> Marcar Entregado
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>

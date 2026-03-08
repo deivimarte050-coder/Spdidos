@@ -1,6 +1,6 @@
 export type UserRole = 'client' | 'delivery' | 'business' | 'admin';
 
-export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'picked_up' | 'on_the_way' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'picked_up' | 'on_the_way' | 'arrived' | 'delivered' | 'cancelled' | 'rejected';
 
 export interface User {
   id: string;

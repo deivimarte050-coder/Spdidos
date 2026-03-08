@@ -16,6 +16,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
 import FirebaseServiceV2 from './services/FirebaseServiceV2';
 import EventService from './services/EventService';
+import { soundService } from './services/SoundService';
 import { SPM_CENTER } from './constants';
 
 const ORDER_STEPS = [
@@ -24,8 +25,43 @@ const ORDER_STEPS = [
   { status: 'preparing',  label: 'Preparando',         icon: ChefHat },
   { status: 'ready',      label: 'Listo para envío',   icon: ShoppingBag },
   { status: 'on_the_way', label: 'En camino',          icon: Truck },
+  { status: 'arrived',    label: '¡Repartidor llegó!',  icon: MapPin },
   { status: 'delivered',  label: 'Entregado',          icon: CheckCircle2 },
 ];
+
+// ─── Client arrival notification modal ────────────────────────────────────────
+const ArrivalNotificationModal: React.FC<{ onConfirm: () => void }> = ({ onConfirm }) => (
+  <motion.div
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    className="fixed inset-0 z-50 flex items-end justify-center"
+    style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+  >
+    <motion.div
+      initial={{ y: 200 }} animate={{ y: 0 }} exit={{ y: 200 }}
+      transition={{ type: 'spring', damping: 20 }}
+      className="bg-white rounded-t-3xl w-full max-w-md shadow-2xl overflow-hidden"
+    >
+      <div className="bg-teal-500 px-6 pt-8 pb-6 text-center">
+        <motion.div
+          animate={{ scale: [1, 1.2, 1], rotate: [0, -10, 10, 0] }}
+          transition={{ repeat: Infinity, duration: 1.2 }}
+          className="w-20 h-20 bg-white/25 rounded-full flex items-center justify-center mx-auto mb-4"
+        >
+          <span className="text-4xl">🛵</span>
+        </motion.div>
+        <h2 className="text-white font-black text-2xl">¡Tu repartidor llegó!</h2>
+        <p className="text-teal-100 mt-1 text-sm">Está en tu puerta esperando</p>
+      </div>
+      <div className="p-6">
+        <button onClick={onConfirm}
+          className="w-full py-4 bg-teal-500 text-white rounded-2xl font-black text-lg hover:bg-teal-600 transition-all shadow-lg shadow-teal-200 flex items-center justify-center gap-3">
+          <CheckCircle2 className="w-6 h-6" /> Confirmar que el delivery llegó
+        </button>
+        <p className="text-center text-xs text-gray-400 mt-3">Al confirmar, el pedido se marcará como entregado</p>
+      </div>
+    </motion.div>
+  </motion.div>
+);
 
 const TrackingView: React.FC<{
   orderId: string | null;
@@ -113,16 +149,37 @@ function AppContent() {
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevOrderStatuses = useRef<Record<string, string>>({});
 
   useEffect(() => {
     if (!user?.id) return;
     const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
-      setActiveOrders(orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled'));
+      const active = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
+      // Detect when any order transitions to 'arrived'
+      active.forEach(o => {
+        const prev = prevOrderStatuses.current[o.id];
+        if (prev && prev !== 'arrived' && o.status === 'arrived') {
+          setArrivedOrderId(o.id);
+          soundService.startRinging();
+        }
+        prevOrderStatuses.current[o.id] = o.status;
+      });
+      setActiveOrders(active);
     });
-    return unsub;
+    return () => { unsub(); soundService.stopRinging(); };
   }, [user?.id]);
+
+  const handleConfirmArrival = async () => {
+    if (!arrivedOrderId) return;
+    soundService.stopRinging();
+    setArrivedOrderId(null);
+    try {
+      await FirebaseServiceV2.updateOrder(arrivedOrderId, { status: 'delivered' });
+    } catch (err) { console.error('Error confirmando entrega:', err); }
+  };
 
   // Subscribe to delivery location when order is on the way
   useEffect(() => {
@@ -252,6 +309,12 @@ function AppContent() {
   if (user.role === 'admin') return <AdminView />;
 
   return (
+    <>
+      <AnimatePresence>
+        {arrivedOrderId && (
+          <ArrivalNotificationModal onConfirm={handleConfirmArrival} />
+        )}
+      </AnimatePresence>
     <Layout 
       activeView={view} 
       onViewChange={setView}
@@ -636,6 +699,7 @@ function AppContent() {
         total={cartTotal}
       />
     </Layout>
+    </>
   );
 }
 
