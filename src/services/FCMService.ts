@@ -28,18 +28,16 @@ export async function initFCMToken(): Promise<string | null> {
     await Notification.requestPermission().catch(() => {});
   }
 
-  // FCM token (for push when browser is fully closed) requires VAPID key
-  if (!VAPID_KEY) {
-    console.warn('[FCM] VITE_VAPID_KEY not set — SW registered, FCM push disabled');
-    return null;
-  }
   if (!('Notification' in window) || Notification.permission !== 'granted') return null;
 
   try {
-    const token = await getToken(getMsg(), {
-      vapidKey: VAPID_KEY,
+    // vapidKey is optional — Firebase uses its default key when omitted
+    const tokenOptions: Parameters<typeof getToken>[1] = {
       serviceWorkerRegistration: swReg,
-    });
+    };
+    if (VAPID_KEY) tokenOptions.vapidKey = VAPID_KEY;
+
+    const token = await getToken(getMsg(), tokenOptions);
     return token || null;
   } catch (err) {
     console.error('[FCM] Error getting token:', err);
