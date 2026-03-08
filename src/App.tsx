@@ -206,6 +206,16 @@ const TrackingView: React.FC<{
   );
 };
 
+// ─── Push notification helper (uses SW to show OS notification) ──────────────
+async function showPushNotification(title: string, body: string, tag = 'spdidos') {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    reg.active?.postMessage({ type: 'SHOW_NOTIFICATION', title, body, tag });
+  } catch { /* ignore */ }
+}
+
 function AppContent() {
   const { user, logout } = useAuth();
   const [view, setView] = useState<View>('home');
@@ -230,6 +240,17 @@ function AppContent() {
   const deliveryKnownReadyIds  = useRef<Set<string>>(new Set());
   const deliveryGlobalInited   = useRef(false);
 
+  // ── Service Worker registration + notification permission ───────────────────
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+
   useEffect(() => {
     if (!user?.id) return;
     const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
@@ -240,6 +261,7 @@ function AppContent() {
           arrivedNotifiedIds.current.add(o.id);
           setArrivedOrderId(o.id);
           soundService.startRinging();
+          showPushNotification('¡Tu repartidor llegó! 🛵', 'Está en tu puerta esperando — abre la app para confirmar', 'arrived');
         }
       });
       setActiveOrders(active);
@@ -262,6 +284,7 @@ function AppContent() {
           bizShowingModal.current = true;
           setIncomingOrder(pending);
           soundService.startRinging();
+          showPushNotification('¡Nuevo Pedido! 🔔', `${pending.clientName} — RD$ ${pending.total?.toFixed(0)}`, 'new-order');
         }
       }
     });
@@ -300,7 +323,10 @@ function AppContent() {
         deliveryGlobalInited.current = true;
       } else {
         const hasNew = available.some(o => !deliveryKnownReadyIds.current.has(o.id));
-        if (hasNew && !myActive) soundService.startRinging();
+        if (hasNew && !myActive) {
+          soundService.startRinging();
+          showPushNotification('¡Pedido disponible! 📦', 'Hay un nuevo pedido listo para recoger', 'ready-order');
+        }
         if (available.length === 0)  soundService.stopRinging();
         available.forEach(o => deliveryKnownReadyIds.current.add(o.id));
       }
