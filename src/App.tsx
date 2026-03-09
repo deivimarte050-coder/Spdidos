@@ -473,7 +473,7 @@ function AppContent() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
   const [selectedDrinkSize, setSelectedDrinkSize] = useState<string | null>(null);
-  const [modalQuantity, setModalQuantity] = useState(1);
+  const [modalQuantity, setModalQuantity] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -1266,7 +1266,7 @@ function AppContent() {
                           onClick={() => {
                             setSelectedMenuItem(item);
                             setSelectedDrinkSize(null);
-                            setModalQuantity(1);
+                            setModalQuantity(0);
                           }}
                           className="relative h-32 md:h-40 overflow-hidden w-full text-left"
                         >
@@ -1400,7 +1400,7 @@ function AppContent() {
                         <div className="flex items-center justify-center gap-5">
                           <button
                             type="button"
-                            onClick={() => setModalQuantity(q => Math.max(1, q - 1))}
+                            onClick={() => setModalQuantity(q => Math.max(0, q - 1))}
                             className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center text-xl font-bold text-gray-600 hover:border-primary hover:text-primary transition-colors"
                           >
                             −
@@ -1428,12 +1428,12 @@ function AppContent() {
                             }
                             setSelectedMenuItem(null);
                             setSelectedDrinkSize(null);
-                            setModalQuantity(1);
+                            setModalQuantity(0);
                           }}
                           className="w-full py-4 rounded-2xl bg-primary text-white font-black text-lg"
-                          disabled={selectedMenuItem.available === false}
+                          disabled={selectedMenuItem.available === false || modalQuantity < 1}
                         >
-                          {selectedMenuItem.available === false ? 'No disponible' : `Agregar al pedido · RD$ ${(selectedPrice * modalQuantity).toFixed(0)}`}
+                          {selectedMenuItem.available === false ? 'No disponible' : modalQuantity < 1 ? 'Selecciona la cantidad' : `Agregar al pedido · RD$ ${(selectedPrice * modalQuantity).toFixed(0)}`}
                         </button>
                       </div>
                     </motion.div>
