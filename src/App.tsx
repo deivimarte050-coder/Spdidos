@@ -14,7 +14,7 @@ import AdminView from './views/AdminView';
 import { CartItem, View, Order } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
-import FirebaseServiceV2 from './services/FirebaseServiceV2';
+import FirebaseServiceV2, { HomeAnnouncement } from './services/FirebaseServiceV2';
 import EventService from './services/EventService';
 import { soundService } from './services/SoundService';
 import { initFCMToken, listenFCMForeground } from './services/FCMService';
@@ -434,6 +434,7 @@ function AppContent() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
+  const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // ── Client: notify whenever an order is (or becomes) 'arrived' ─────────────
@@ -462,6 +463,13 @@ function AppContent() {
     });
     listenFCMForeground();
   }, [user?.id]);
+
+  useEffect(() => {
+    const unsubscribe = FirebaseServiceV2.subscribeToHomeAnnouncement((announcement) => {
+      setHomeAnnouncement(announcement);
+    });
+    return () => unsubscribe();
+  }, []);
 
 
   useEffect(() => {
@@ -742,7 +750,7 @@ function AppContent() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <HomeView>
+            <HomeView announcement={homeAnnouncement ?? undefined}>
               <BusinessList onBusinessSelect={handleBusinessSelect} />
             </HomeView>
           </motion.div>

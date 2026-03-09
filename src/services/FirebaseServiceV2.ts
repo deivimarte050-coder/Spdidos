@@ -17,6 +17,14 @@ import {
 import { db } from '../firebase/config';
 import { User, Order } from '../types';
 
+export interface HomeAnnouncement {
+  topText: string;
+  highlightText: string;
+  ctaText: string;
+  imageUrl: string;
+  updatedAt?: string;
+}
+
 // Colecciones de Firestore
 const COLLECTIONS = {
   USERS: 'users',
@@ -25,7 +33,15 @@ const COLLECTIONS = {
   DELIVERY_PERSONS: 'deliveryPersons',
   DELIVERY_LOCATIONS: 'delivery_locations',
   CLIENT_LOCATIONS: 'client_locations',
-  FCM_TOKENS: 'fcm_tokens'
+  FCM_TOKENS: 'fcm_tokens',
+  SETTINGS: 'settings'
+};
+
+const DEFAULT_HOME_ANNOUNCEMENT: HomeAnnouncement = {
+  topText: '¡Hace hasta un',
+  highlightText: '50% DCTO!',
+  ctaText: 'PEDIR YA',
+  imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center',
 };
 
 // Helper para convertir Timestamp a string
@@ -395,6 +411,39 @@ class FirebaseServiceV2 {
       console.error('❌ [FirebaseV2] Error actualizando perfil:', error);
       throw error;
     }
+  }
+
+  async getHomeAnnouncement(): Promise<HomeAnnouncement> {
+    try {
+      const snap = await getDoc(doc(db, COLLECTIONS.SETTINGS, 'home_announcement'));
+      if (!snap.exists()) return DEFAULT_HOME_ANNOUNCEMENT;
+      return { ...DEFAULT_HOME_ANNOUNCEMENT, ...(snap.data() as HomeAnnouncement) };
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error obteniendo anuncio:', error);
+      return DEFAULT_HOME_ANNOUNCEMENT;
+    }
+  }
+
+  async saveHomeAnnouncement(data: HomeAnnouncement): Promise<void> {
+    try {
+      await setDoc(doc(db, COLLECTIONS.SETTINGS, 'home_announcement'), {
+        ...data,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error guardando anuncio:', error);
+      throw error;
+    }
+  }
+
+  subscribeToHomeAnnouncement(callback: (announcement: HomeAnnouncement) => void): () => void {
+    const ref = doc(db, COLLECTIONS.SETTINGS, 'home_announcement');
+    return onSnapshot(ref, (snap) => {
+      const data = snap.exists() ? (snap.data() as HomeAnnouncement) : DEFAULT_HOME_ANNOUNCEMENT;
+      callback({ ...DEFAULT_HOME_ANNOUNCEMENT, ...data });
+    }, () => {
+      callback(DEFAULT_HOME_ANNOUNCEMENT);
+    });
   }
 
   async saveFCMToken(userId: string, token: string, role: string, businessId?: string) {

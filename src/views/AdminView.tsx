@@ -28,7 +28,10 @@ import {
   X,
   Truck,
   ChefHat,
-  UserCheck
+  UserCheck,
+  Megaphone,
+  ImagePlus,
+  Save
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
@@ -39,7 +42,7 @@ import { User as AppUser } from '../types';
 
 const AdminView: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports' | 'announcements'>('dashboard');
   const [deliveryUsers, setDeliveryUsers] = useState<AppUser[]>([]);
   const [orderFilter, setOrderFilter] = useState<string>('active');
   const [newDelivery, setNewDelivery] = useState({ name: '', email: '', phone: '', whatsapp: '', password: '', vehicleType: '', cedula: '' });
@@ -50,6 +53,13 @@ const AdminView: React.FC = () => {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [announcementForm, setAnnouncementForm] = useState({
+    topText: '¡Hace hasta un',
+    highlightText: '50% DCTO!',
+    ctaText: 'PEDIR YA',
+    imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center',
+  });
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
   const [newBusiness, setNewBusiness] = useState({
     name: '',
@@ -80,13 +90,20 @@ const AdminView: React.FC = () => {
   useEffect(() => {
     const loadStaticData = async () => {
       try {
-        const [businessesData, usersData] = await Promise.all([
+        const [businessesData, usersData, homeAnnouncement] = await Promise.all([
           FirebaseServiceV2.getBusinesses(),
-          FirebaseServiceV2.getUsers()
+          FirebaseServiceV2.getUsers(),
+          FirebaseServiceV2.getHomeAnnouncement(),
         ]);
         setBusinesses(businessesData);
         setUsers(usersData);
         setDeliveryUsers(usersData.filter((u: AppUser) => u.role === 'delivery'));
+        setAnnouncementForm({
+          topText: homeAnnouncement.topText,
+          highlightText: homeAnnouncement.highlightText,
+          ctaText: homeAnnouncement.ctaText,
+          imageUrl: homeAnnouncement.imageUrl,
+        });
       } catch (error) {
         console.error('Error cargando datos:', error);
         setBusinesses(DataService.getBusinesses());
@@ -110,6 +127,30 @@ const AdminView: React.FC = () => {
     };
   }, []);
 
+  const handleAnnouncementImageUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = typeof reader.result === 'string' ? reader.result : '';
+      if (base64) {
+        setAnnouncementForm(prev => ({ ...prev, imageUrl: base64 }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingAnnouncement(true);
+    try {
+      await FirebaseServiceV2.saveHomeAnnouncement(announcementForm);
+      alert('✅ Anuncio guardado correctamente.');
+    } catch (error: any) {
+      alert(`❌ Error guardando anuncio: ${error?.message || 'Error desconocido'}`);
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  };
+
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'create-business', label: 'Crear Negocio', icon: Plus },
@@ -117,7 +158,8 @@ const AdminView: React.FC = () => {
     { id: 'businesses', label: 'Lista de Negocios', icon: Store },
     { id: 'orders', label: 'Ver Pedidos', icon: ShoppingCart },
     { id: 'users', label: 'Usuarios', icon: Users },
-    { id: 'reports', label: 'Reportes', icon: FileText }
+    { id: 'reports', label: 'Reportes', icon: FileText },
+    { id: 'announcements', label: 'Anuncios', icon: Megaphone }
   ];
 
   const stats = {
@@ -433,6 +475,7 @@ const AdminView: React.FC = () => {
               {activeTab === 'orders' && 'Monitorea todos los pedidos en tiempo real'}
               {activeTab === 'users' && 'Administra todos los usuarios registrados'}
               {activeTab === 'reports' && 'Analiza el rendimiento de la plataforma'}
+              {activeTab === 'announcements' && 'Edita el banner principal mostrado en el home de clientes'}
             </p>
           </div>
 
@@ -1151,6 +1194,129 @@ const AdminView: React.FC = () => {
                     <p className="text-sm text-gray-400 mt-1">Pedidos Completados</p>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Announcements */}
+          {activeTab === 'announcements' && (
+            <motion.div
+              key="announcements"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="grid grid-cols-1 xl:grid-cols-2 gap-6"
+            >
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="text-xl font-black text-gray-900 mb-1">Configurar anuncio</h3>
+                <p className="text-sm text-gray-400 mb-6">Este contenido se refleja en el home del cliente.</p>
+
+                <form onSubmit={handleSaveAnnouncement} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Texto superior</label>
+                    <input
+                      type="text"
+                      value={announcementForm.topText}
+                      onChange={(e) => setAnnouncementForm(prev => ({ ...prev, topText: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="¡Hace hasta un"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Texto destacado</label>
+                    <input
+                      type="text"
+                      value={announcementForm.highlightText}
+                      onChange={(e) => setAnnouncementForm(prev => ({ ...prev, highlightText: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="50% DCTO!"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Texto botón</label>
+                    <input
+                      type="text"
+                      value={announcementForm.ctaText}
+                      onChange={(e) => setAnnouncementForm(prev => ({ ...prev, ctaText: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="PEDIR YA"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Imagen del anuncio (URL)</label>
+                    <input
+                      type="url"
+                      value={announcementForm.imageUrl}
+                      onChange={(e) => setAnnouncementForm(prev => ({ ...prev, imageUrl: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="https://..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">O subir imagen desde tu dispositivo</label>
+                    <label className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer text-sm font-semibold text-gray-600">
+                      <ImagePlus className="w-4 h-4" /> Seleccionar imagen
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleAnnouncementImageUpload(file);
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingAnnouncement}
+                    className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary/90 disabled:opacity-70 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Save className="w-4 h-4" /> {savingAnnouncement ? 'Guardando...' : 'Guardar anuncio'}
+                  </button>
+                </form>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="text-xl font-black text-gray-900 mb-4">Vista previa</h3>
+
+                <motion.div
+                  initial={{ opacity: 0.9 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.35 }}
+                  className="relative overflow-hidden rounded-2xl"
+                  style={{ background: 'linear-gradient(120deg,#ff8c00 0%,#f97316 45%,#ea580c 100%)' }}
+                >
+                  <motion.div
+                    animate={{ y: [0, -3, 0] }}
+                    transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+                    className="relative z-10 px-5 py-6 max-w-[60%]"
+                  >
+                    <p className="text-white text-base lg:text-lg font-bold leading-tight">{announcementForm.topText || ' '}</p>
+                    <p className="text-white font-black text-4xl leading-none tracking-tight">{announcementForm.highlightText || ' '}</p>
+                    <button className="mt-4 bg-amber-900/80 text-white font-black px-5 py-2 rounded-full text-xs tracking-wide">
+                      {announcementForm.ctaText || ' '}
+                    </button>
+                  </motion.div>
+
+                  <motion.img
+                    animate={{ scale: [1, 1.03, 1] }}
+                    transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+                    src={announcementForm.imageUrl}
+                    alt="Preview anuncio"
+                    className="absolute right-0 top-0 h-full w-[45%] object-cover object-left"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center';
+                    }}
+                  />
+
+                  <div className="absolute inset-y-0 right-[33%] w-14 pointer-events-none" style={{ background: 'linear-gradient(to right, #f97316, transparent)' }} />
+                </motion.div>
               </div>
             </motion.div>
           )}

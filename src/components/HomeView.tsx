@@ -5,9 +5,24 @@ import CategoryCards from './CategoryCards';
 
 interface HomeViewProps {
   children?: React.ReactNode;
+  announcement?: {
+    topText: string;
+    highlightText: string;
+    ctaText: string;
+    imageUrl: string;
+  };
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ children }) => {
+const fallbackAnnouncement = {
+  topText: '¡Hace hasta un',
+  highlightText: '50% DCTO!',
+  ctaText: 'PEDIR YA',
+  imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center',
+};
+
+const HomeView: React.FC<HomeViewProps> = ({ children, announcement }) => {
+  const banner = announcement ?? fallbackAnnouncement;
+
   return (
     <div className="pb-12">
 
@@ -46,25 +61,34 @@ const HomeView: React.FC<HomeViewProps> = ({ children }) => {
           </div>
 
           {/* Text content */}
-          <div className="relative z-10 px-6 py-7 lg:px-10 lg:py-10 max-w-[58%]">
+          <motion.div
+            animate={{ y: [0, -3, 0] }}
+            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            className="relative z-10 px-6 py-7 lg:px-10 lg:py-10 max-w-[58%]"
+          >
             <p className="text-white text-lg lg:text-2xl font-bold leading-tight">
-              <span className="font-black">¡Hace</span> hasta un
+              {banner.topText}
             </p>
-            <p className="text-white font-black text-5xl lg:text-7xl leading-none tracking-tight">50% DCTO!</p>
+            <p className="text-white font-black text-5xl lg:text-7xl leading-none tracking-tight">{banner.highlightText}</p>
             <motion.button
               whileTap={{ scale: 0.95 }}
               className="mt-5 bg-amber-900/80 hover:bg-amber-950 text-white font-black px-7 py-3 rounded-full text-sm lg:text-base tracking-wide transition-colors shadow-lg"
             >
-              PEDIR YA
+              {banner.ctaText}
             </motion.button>
-          </div>
+          </motion.div>
 
           {/* Food image */}
-          <img
-            src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center"
+          <motion.img
+            animate={{ scale: [1, 1.03, 1] }}
+            transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+            src={banner.imageUrl}
             alt="Comida"
             className="absolute right-0 top-0 h-full w-[45%] object-cover object-left"
             referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = fallbackAnnouncement.imageUrl;
+            }}
           />
           {/* Left-side fade overlay so text stays readable */}
           <div
