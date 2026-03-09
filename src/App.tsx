@@ -171,6 +171,24 @@ function getEtaMinutes(orderId: string, min: number, max: number): number {
   return min + (hash % (max - min + 1));
 }
 
+/** Haversine distance in km between two GPS points */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Estimate delivery minutes from distance in km (avg motorcycle ~25 km/h in city + 2 min buffer) */
+function estimateMinutesFromKm(km: number): number {
+  const AVG_SPEED_KMH = 25;
+  return Math.max(1, Math.round((km / AVG_SPEED_KMH) * 60) + 2);
+}
+
 const TrackingView: React.FC<{
   orderId: string | null;
   orders: Order[];
@@ -182,37 +200,64 @@ const TrackingView: React.FC<{
   const deliverPos: [number, number] = deliveryLocation ? [deliveryLocation.lat, deliveryLocation.lng] : SPM_CENTER;
 
   const [secsLeft, setSecsLeft] = useState<number | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
 
+  // Extract client GPS from order (handles both object {lat,lng} and tuple [lat,lng] formats)
+  const getClientCoords = (): { lat: number; lng: number } | null => {
+    const loc = order?.clientLocation as any;
+    if (!loc) return null;
+    if (Array.isArray(loc) && loc.length >= 2) return { lat: loc[0], lng: loc[1] };
+    if (typeof loc === 'object' && loc.lat != null && loc.lng != null) return { lat: loc.lat, lng: loc.lng };
+    return null;
+  };
+
+  // Dynamic GPS-based ETA when on_the_way
   useEffect(() => {
-    if (!order?.id) { setSecsLeft(null); return; }
+    if (!order?.id) { setSecsLeft(null); setDistanceKm(null); return; }
 
-    const isPrep   = order.status === 'preparing';
-    const isOnWay  = order.status === 'on_the_way';
-    if (!isPrep && !isOnWay) { setSecsLeft(null); return; }
+    const isPrep  = order.status === 'preparing';
+    const isOnWay = order.status === 'on_the_way';
+    if (!isPrep && !isOnWay) { setSecsLeft(null); setDistanceKm(null); return; }
 
-    const lsKey    = `spdidos_eta_${order.id}_${order.status}`;
-    const etaMins  = isPrep
-      ? getEtaMinutes(order.id, 20, 30)
-      : getEtaMinutes(order.id, 15, 20);
-    const etaMs    = etaMins * 60 * 1000;
-
-    let startTime  = parseInt(localStorage.getItem(lsKey) ?? '0', 10);
-    if (!startTime) {
-      startTime = Date.now();
-      localStorage.setItem(lsKey, String(startTime));
+    if (isPrep) {
+      // Preparation: use fixed deterministic ETA
+      const lsKey   = `spdidos_eta_${order.id}_preparing`;
+      const etaMins = getEtaMinutes(order.id, 20, 30);
+      const etaMs   = etaMins * 60 * 1000;
+      let startTime = parseInt(localStorage.getItem(lsKey) ?? '0', 10);
+      if (!startTime) { startTime = Date.now(); localStorage.setItem(lsKey, String(startTime)); }
+      const calc = () => Math.max(0, Math.round((startTime + etaMs - Date.now()) / 1000));
+      setSecsLeft(calc());
+      setDistanceKm(null);
+      const interval = setInterval(() => {
+        const r = calc(); setSecsLeft(r); if (r === 0) clearInterval(interval);
+      }, 1000);
+      return () => clearInterval(interval);
     }
 
-    const calc = () => Math.max(0, Math.round((startTime + etaMs - Date.now()) / 1000));
-    setSecsLeft(calc());
-
-    const interval = setInterval(() => {
-      const remaining = calc();
-      setSecsLeft(remaining);
-      if (remaining === 0) clearInterval(interval);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [order?.id, order?.status]);
+    // on_the_way: calculate from real GPS distance
+    const clientCoords = getClientCoords();
+    if (deliveryLocation && clientCoords) {
+      const km = haversineKm(deliveryLocation.lat, deliveryLocation.lng, clientCoords.lat, clientCoords.lng);
+      const mins = estimateMinutesFromKm(km);
+      setDistanceKm(Math.round(km * 10) / 10);
+      setSecsLeft(mins * 60);
+    } else {
+      // Fallback if no GPS coords available
+      const lsKey   = `spdidos_eta_${order.id}_on_the_way`;
+      const etaMins = getEtaMinutes(order.id, 15, 20);
+      const etaMs   = etaMins * 60 * 1000;
+      let startTime = parseInt(localStorage.getItem(lsKey) ?? '0', 10);
+      if (!startTime) { startTime = Date.now(); localStorage.setItem(lsKey, String(startTime)); }
+      const calc = () => Math.max(0, Math.round((startTime + etaMs - Date.now()) / 1000));
+      setSecsLeft(calc());
+      setDistanceKm(null);
+      const interval = setInterval(() => {
+        const r = calc(); setSecsLeft(r); if (r === 0) clearInterval(interval);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [order?.id, order?.status, deliveryLocation?.lat, deliveryLocation?.lng]);
 
   const fmtTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -272,11 +317,18 @@ const TrackingView: React.FC<{
               {order.status === 'preparing' ? 'Tiempo estimado de preparación' : 'Tiempo estimado de llegada'}
             </p>
             {secsLeft > 0 ? (
-              <p className={`text-3xl font-black tabular-nums ${
-                order.status === 'preparing' ? 'text-amber-700' : 'text-blue-700'
-              }`}>
-                {fmtTime(secsLeft)} <span className="text-sm font-semibold opacity-60">min</span>
-              </p>
+              <>
+                <p className={`text-3xl font-black tabular-nums ${
+                  order.status === 'preparing' ? 'text-amber-700' : 'text-blue-700'
+                }`}>
+                  {fmtTime(secsLeft)} <span className="text-sm font-semibold opacity-60">min</span>
+                </p>
+                {distanceKm !== null && order.status === 'on_the_way' && (
+                  <p className="text-xs text-blue-500 font-semibold mt-0.5">
+                    📍 A {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm} km`} de ti
+                  </p>
+                )}
+              </>
             ) : (
               <p className={`text-base font-black animate-pulse ${
                 order.status === 'preparing' ? 'text-amber-600' : 'text-blue-600'
