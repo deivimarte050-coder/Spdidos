@@ -20,6 +20,7 @@ interface MenuItem {
 }
 
 const defaultDrinkSize = { size: '', price: 0 };
+const presetSizes = ['Pequeño', 'Mediano', 'Grande', '12 oz', '16 oz', '24 oz'];
 
 const MenuManager: React.FC = () => {
   const { user } = useAuth();
@@ -323,43 +324,61 @@ const MenuManager: React.FC = () => {
             </div>
 
             {isDrinkCategory(newItem.category) && (
-              <div className="space-y-2">
+              <div className="space-y-3 bg-blue-50/60 border border-blue-200 rounded-xl p-4">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tamaños de bebida</label>
+                  <label className="text-xs font-bold text-blue-700 uppercase tracking-widest">🥤 Tamaños de bebida</label>
                   <button
                     type="button"
                     onClick={addDrinkSizeToNew}
-                    className="text-xs font-bold text-primary"
+                    className="text-xs font-bold text-primary hover:underline"
                   >
-                    + Agregar tamaño
+                    + Agregar tamaño personalizado
                   </button>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {presetSizes.filter(ps => !(newItem.drinkSizes || []).some(ds => ds.size.toLowerCase() === ps.toLowerCase())).map(ps => (
+                    <button
+                      key={ps}
+                      type="button"
+                      onClick={() => setNewItem(prev => ({ ...prev, drinkSizes: [...(prev.drinkSizes || []), { size: ps, price: 0 }] }))}
+                      className="text-xs px-3 py-1.5 rounded-full border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
+                    >
+                      + {ps}
+                    </button>
+                  ))}
+                </div>
                 {(newItem.drinkSizes || []).map((size, idx) => (
-                  <div key={`new-size-${idx}`} className="grid grid-cols-[1fr_130px_auto] gap-2">
+                  <div key={`new-size-${idx}`} className="grid grid-cols-[1fr_130px_auto] gap-2 items-center">
                     <input
                       type="text"
                       value={size.size}
                       onChange={(e) => updateDrinkSizeOnNew(idx, { size: e.target.value })}
-                      className="p-2 border border-gray-200 rounded-lg text-sm"
-                      placeholder="Ej: 12 oz"
+                      className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                      placeholder="Ej: Grande, 16 oz"
                     />
-                    <input
-                      type="number"
-                      min={0}
-                      value={size.price}
-                      onChange={(e) => updateDrinkSizeOnNew(idx, { price: parseFloat(e.target.value) || 0 })}
-                      className="p-2 border border-gray-200 rounded-lg text-sm"
-                      placeholder="Precio"
-                    />
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">RD$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={size.price || ''}
+                        onChange={(e) => updateDrinkSizeOnNew(idx, { price: parseFloat(e.target.value) || 0 })}
+                        className="w-full pl-9 pr-2 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                        placeholder="0"
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={() => removeDrinkSizeOnNew(idx)}
-                      className="px-3 rounded-lg bg-gray-100 text-gray-600"
+                      className="px-3 py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
+                {(newItem.drinkSizes || []).length === 0 && (
+                  <p className="text-xs text-blue-400 italic">Agrega al menos un tamaño con su precio para que el cliente pueda elegir.</p>
+                )}
               </div>
             )}
 
@@ -466,29 +485,44 @@ const MenuManager: React.FC = () => {
                   />
 
                   {isDrinkCategory(editingItem.category) && (
-                    <div className="space-y-2">
+                    <div className="space-y-2 bg-blue-50/60 border border-blue-200 rounded-xl p-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-gray-500 uppercase">Tamaños</p>
-                        <button type="button" onClick={addDrinkSizeToEdit} className="text-xs font-bold text-primary">+ Tamaño</button>
+                        <p className="text-xs font-bold text-blue-700 uppercase">🥤 Tamaños</p>
+                        <button type="button" onClick={addDrinkSizeToEdit} className="text-xs font-bold text-primary hover:underline">+ Personalizado</button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {presetSizes.filter(ps => !(editingItem.drinkSizes || []).some(ds => ds.size.toLowerCase() === ps.toLowerCase())).map(ps => (
+                          <button
+                            key={ps}
+                            type="button"
+                            onClick={() => setEditingItem({ ...editingItem, drinkSizes: [...(editingItem.drinkSizes || []), { size: ps, price: 0 }] })}
+                            className="text-[11px] px-2 py-1 rounded-full border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
+                          >
+                            + {ps}
+                          </button>
+                        ))}
                       </div>
                       {(editingItem.drinkSizes || []).map((size, idx) => (
-                        <div key={`edit-size-${idx}`} className="grid grid-cols-[1fr_110px_auto] gap-2">
+                        <div key={`edit-size-${idx}`} className="grid grid-cols-[1fr_110px_auto] gap-2 items-center">
                           <input
                             type="text"
                             value={size.size}
                             onChange={(e) => updateDrinkSizeOnEdit(idx, { size: e.target.value })}
-                            className="p-2 border border-gray-200 rounded-lg text-sm"
-                            placeholder="16 oz"
+                            className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                            placeholder="Ej: Grande"
                           />
-                          <input
-                            type="number"
-                            min={0}
-                            value={size.price}
-                            onChange={(e) => updateDrinkSizeOnEdit(idx, { price: parseFloat(e.target.value) || 0 })}
-                            className="p-2 border border-gray-200 rounded-lg text-sm"
-                            placeholder="Precio"
-                          />
-                          <button type="button" onClick={() => removeDrinkSizeOnEdit(idx)} className="px-2 rounded bg-gray-100 text-gray-600">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">RD$</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={size.price || ''}
+                              onChange={(e) => updateDrinkSizeOnEdit(idx, { price: parseFloat(e.target.value) || 0 })}
+                              className="w-full pl-9 pr-2 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                              placeholder="0"
+                            />
+                          </div>
+                          <button type="button" onClick={() => removeDrinkSizeOnEdit(idx)} className="px-2 py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
