@@ -18,7 +18,7 @@ import FirebaseServiceV2, { HomeAnnouncement } from './services/FirebaseServiceV
 import EventService from './services/EventService';
 import { soundService } from './services/SoundService';
 import { initFCMToken, listenFCMForeground } from './services/FCMService';
-import { SPM_CENTER } from './constants';
+import { LOGO_URL, SPM_CENTER } from './constants';
 
 const ORDER_STEPS = [
   { status: 'pending',    label: 'Pedido recibido',   icon: Package },
@@ -29,6 +29,41 @@ const ORDER_STEPS = [
   { status: 'arrived',    label: '¡Repartidor llegó!',  icon: MapPin },
   { status: 'delivered',  label: 'Entregado',          icon: CheckCircle2 },
 ];
+
+const SplashScreen: React.FC = () => (
+  <motion.div
+    key="splash"
+    initial={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    transition={{ duration: 0.45 }}
+    className="fixed inset-0 z-[9999] bg-primary flex items-center justify-center"
+  >
+    <motion.div
+      initial={{ opacity: 0, scale: 0.88, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.75, ease: 'easeOut' }}
+      className="flex flex-col items-center"
+    >
+      <motion.img
+        src={LOGO_URL}
+        alt="Spdidos"
+        className="w-28 h-28 object-contain drop-shadow-xl"
+        animate={{ scale: [1, 1.04, 1] }}
+        transition={{ duration: 1.7, repeat: Infinity, ease: 'easeInOut' }}
+        referrerPolicy="no-referrer"
+      />
+      <motion.h1
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2, duration: 0.5 }}
+        className="mt-4 text-white text-4xl font-black tracking-tight"
+      >
+        Spdidos
+      </motion.h1>
+      <p className="text-white/85 text-sm font-bold tracking-[0.2em] mt-1">DELIVERY & MANDADOS</p>
+    </motion.div>
+  </motion.div>
+);
 
 // ─── Client arrival notification modal ────────────────────────────────────────
 const ArrivalNotificationModal: React.FC<{ onConfirm: () => void }> = ({ onConfirm }) => (
@@ -1154,9 +1189,18 @@ function AppContent() {
 }
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <AuthProvider>
-      <AppContent />
+      <AnimatePresence mode="wait">
+        {showSplash ? <SplashScreen /> : <AppContent />}
+      </AnimatePresence>
     </AuthProvider>
   );
 }
