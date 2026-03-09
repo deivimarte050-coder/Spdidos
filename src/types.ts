@@ -91,6 +91,10 @@ export interface MenuItem {
   category?: string;
   image?: string;
   available?: boolean;
+  drinkSizes?: Array<{
+    size: string;
+    price: number;
+  }>;
 }
 
 export interface Order {

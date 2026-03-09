@@ -13,7 +13,13 @@ interface MenuItem {
   image: string;
   isActive: boolean;
   isAvailable: boolean;
+  drinkSizes?: Array<{
+    size: string;
+    price: number;
+  }>;
 }
+
+const defaultDrinkSize = { size: '', price: 0 };
 
 const MenuManager: React.FC = () => {
   const { user } = useAuth();
@@ -27,10 +33,16 @@ const MenuManager: React.FC = () => {
     category: '',
     image: '',
     isActive: true,
-    isAvailable: true
+    isAvailable: true,
+    drinkSizes: []
   });
 
   const categories = ['Platos Típicos', 'Pizzas', 'Bebidas', 'Postres', 'Ensaladas', 'Sopas'];
+  const isDrinkCategory = (category?: string) => (category || '').toLowerCase().includes('bebida');
+  const sanitizeDrinkSizes = (drinkSizes?: Array<{ size: string; price: number }>) =>
+    (drinkSizes || [])
+      .filter((size) => size.size.trim() && Number.isFinite(size.price) && size.price > 0)
+      .map((size) => ({ size: size.size.trim().toLowerCase(), price: size.price }));
 
   // Cargar menú del negocio actual desde Firebase
   useEffect(() => {
@@ -49,7 +61,8 @@ const MenuManager: React.FC = () => {
               category: item.category || 'General',
               image: item.image || 'https://picsum.photos/seed/default/300/200',
               isActive: item.available !== false,
-              isAvailable: item.available !== false
+              isAvailable: item.available !== false,
+              drinkSizes: item.drinkSizes || []
             }));
             setMenuItems(convertedMenu);
             console.log(`✅ [MenuManager] ${convertedMenu.length} items cargados`);
@@ -85,7 +98,8 @@ const MenuManager: React.FC = () => {
             price: item.price,
             category: item.category,
             image: item.image,
-            available: item.isAvailable && item.isActive
+            available: item.isAvailable && item.isActive,
+            drinkSizes: isDrinkCategory(item.category) ? sanitizeDrinkSizes(item.drinkSizes) : []
           }));
           
           // Actualizar el negocio con el nuevo menú
@@ -138,7 +152,8 @@ const MenuManager: React.FC = () => {
         category: newItem.category,
         image: newItem.image || 'https://picsum.photos/seed/default/300/200',
         isActive: newItem.isActive || true,
-        isAvailable: newItem.isAvailable || true
+        isAvailable: newItem.isAvailable || true,
+        drinkSizes: isDrinkCategory(newItem.category) ? sanitizeDrinkSizes(newItem.drinkSizes) : []
       };
       const updatedMenu = [...menuItems, item];
       setMenuItems(updatedMenu);
@@ -150,10 +165,44 @@ const MenuManager: React.FC = () => {
         category: '',
         image: '',
         isActive: true,
-        isAvailable: true
+        isAvailable: true,
+        drinkSizes: []
       });
       setIsAddingNew(false);
     }
+  };
+
+  const addDrinkSizeToNew = () => {
+    setNewItem((prev) => ({ ...prev, drinkSizes: [...(prev.drinkSizes || []), { ...defaultDrinkSize }] }));
+  };
+
+  const updateDrinkSizeOnNew = (index: number, patch: Partial<{ size: string; price: number }>) => {
+    setNewItem((prev) => ({
+      ...prev,
+      drinkSizes: (prev.drinkSizes || []).map((size, idx) => (idx === index ? { ...size, ...patch } : size)),
+    }));
+  };
+
+  const removeDrinkSizeOnNew = (index: number) => {
+    setNewItem((prev) => ({ ...prev, drinkSizes: (prev.drinkSizes || []).filter((_, idx) => idx !== index) }));
+  };
+
+  const addDrinkSizeToEdit = () => {
+    if (!editingItem) return;
+    setEditingItem({ ...editingItem, drinkSizes: [...(editingItem.drinkSizes || []), { ...defaultDrinkSize }] });
+  };
+
+  const updateDrinkSizeOnEdit = (index: number, patch: Partial<{ size: string; price: number }>) => {
+    if (!editingItem) return;
+    setEditingItem({
+      ...editingItem,
+      drinkSizes: (editingItem.drinkSizes || []).map((size, idx) => (idx === index ? { ...size, ...patch } : size)),
+    });
+  };
+
+  const removeDrinkSizeOnEdit = (index: number) => {
+    if (!editingItem) return;
+    setEditingItem({ ...editingItem, drinkSizes: (editingItem.drinkSizes || []).filter((_, idx) => idx !== index) });
   };
 
   const handleDelete = (id: string) => {
@@ -244,7 +293,7 @@ const MenuManager: React.FC = () => {
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Categoría</label>
                 <select
                   value={newItem.category}
-                  onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                  onChange={(e) => setNewItem({ ...newItem, category: e.target.value, drinkSizes: isDrinkCategory(e.target.value) ? (newItem.drinkSizes || []) : [] })}
                   className="w-full mt-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20"
                 >
                   <option value="">Seleccionar categoría</option>
@@ -272,6 +321,47 @@ const MenuManager: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {isDrinkCategory(newItem.category) && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tamaños de bebida</label>
+                  <button
+                    type="button"
+                    onClick={addDrinkSizeToNew}
+                    className="text-xs font-bold text-primary"
+                  >
+                    + Agregar tamaño
+                  </button>
+                </div>
+                {(newItem.drinkSizes || []).map((size, idx) => (
+                  <div key={`new-size-${idx}`} className="grid grid-cols-[1fr_130px_auto] gap-2">
+                    <input
+                      type="text"
+                      value={size.size}
+                      onChange={(e) => updateDrinkSizeOnNew(idx, { size: e.target.value })}
+                      className="p-2 border border-gray-200 rounded-lg text-sm"
+                      placeholder="Ej: 12 oz"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={size.price}
+                      onChange={(e) => updateDrinkSizeOnNew(idx, { price: parseFloat(e.target.value) || 0 })}
+                      className="p-2 border border-gray-200 rounded-lg text-sm"
+                      placeholder="Precio"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeDrinkSizeOnNew(idx)}
+                      className="px-3 rounded-lg bg-gray-100 text-gray-600"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Descripción</label>
@@ -359,7 +449,7 @@ const MenuManager: React.FC = () => {
                     />
                     <select
                       value={editingItem.category}
-                      onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
+                      onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value, drinkSizes: isDrinkCategory(e.target.value) ? (editingItem.drinkSizes || []) : [] })}
                       className="p-2 border border-gray-200 rounded-lg text-sm"
                     >
                       {categories.map(cat => (
@@ -374,6 +464,37 @@ const MenuManager: React.FC = () => {
                     className="w-full p-2 border border-gray-200 rounded-lg text-sm resize-none"
                     rows={2}
                   />
+
+                  {isDrinkCategory(editingItem.category) && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-gray-500 uppercase">Tamaños</p>
+                        <button type="button" onClick={addDrinkSizeToEdit} className="text-xs font-bold text-primary">+ Tamaño</button>
+                      </div>
+                      {(editingItem.drinkSizes || []).map((size, idx) => (
+                        <div key={`edit-size-${idx}`} className="grid grid-cols-[1fr_110px_auto] gap-2">
+                          <input
+                            type="text"
+                            value={size.size}
+                            onChange={(e) => updateDrinkSizeOnEdit(idx, { size: e.target.value })}
+                            className="p-2 border border-gray-200 rounded-lg text-sm"
+                            placeholder="16 oz"
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            value={size.price}
+                            onChange={(e) => updateDrinkSizeOnEdit(idx, { price: parseFloat(e.target.value) || 0 })}
+                            className="p-2 border border-gray-200 rounded-lg text-sm"
+                            placeholder="Precio"
+                          />
+                          <button type="button" onClick={() => removeDrinkSizeOnEdit(idx)} className="px-2 rounded bg-gray-100 text-gray-600">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 // Modo vista
@@ -419,6 +540,11 @@ const MenuManager: React.FC = () => {
                       <span className="font-bold text-primary text-sm">RD$ {item.price}</span>
                     </div>
                     <p className="text-xs text-gray-500 mb-3 line-clamp-2">{item.description}</p>
+                    {isDrinkCategory(item.category) && (item.drinkSizes || []).length > 0 && (
+                      <p className="text-[11px] text-gray-400 mb-3">
+                        Tamaños: {(item.drinkSizes || []).map((size) => `${size.size.toUpperCase()} RD$${size.price}`).join(' · ')}
+                      </p>
+                    )}
                     
                     <div className="flex items-center justify-between">
                       <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg">

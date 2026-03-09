@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Clock, Star, Plus, Minus, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, Clock, Star, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import Layout from './components/Layout';
@@ -11,7 +11,7 @@ import Auth from './components/Auth';
 import DeliveryView from './views/DeliveryView';
 import BusinessView from './views/BusinessView';
 import AdminView from './views/AdminView';
-import { CartItem, View, Order, BusinessDayKey } from './types';
+import { CartItem, View, Order, BusinessDayKey, MenuItem } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
 import FirebaseServiceV2, { HomeAnnouncement } from './services/FirebaseServiceV2';
@@ -471,6 +471,8 @@ function AppContent() {
   const [restaurantsQuickFilter, setRestaurantsQuickFilter] = useState<'all' | 'discounts' | 'featured'>('all');
   const [restaurantsLayout, setRestaurantsLayout] = useState<'list' | 'compact'>('list');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
+  const [selectedDrinkSize, setSelectedDrinkSize] = useState<string | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -701,8 +703,63 @@ function AppContent() {
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
   const normalizedSearchQuery = normalizeSearchText(menuSearchQuery.trim());
+  const isDrinkItem = (item?: MenuItem | null) => {
+    if (!item) return false;
+    const category = normalizeSearchText(item.category || '');
+    const text = normalizeSearchText(`${item.name || ''} ${item.description || ''}`);
+    return category.includes('bebida') || text.includes('jugo') || text.includes('refresco') || text.includes('batida');
+  };
+  const getDrinkSizeOptionsFromDescription = (item?: MenuItem | null) => {
+    if (!item) return [] as { size: string; price: number | null }[];
+
+    if ((item.drinkSizes || []).length > 0) {
+      return (item.drinkSizes || [])
+        .filter((size) => size.size && Number.isFinite(size.price) && size.price > 0)
+        .map((size) => ({ size: size.size.trim().toLowerCase(), price: size.price }));
+    }
+
+    const description = item.description || '';
+    const optionsWithPrice: { size: string; price: number | null }[] = [];
+    const seen = new Set<string>();
+
+    const sizePriceRegex = /(\d{1,3}\s?(?:oz|ml|l))\s*(?:-|=|:)?\s*(?:rd\$?\s*)?(\d{1,5}(?:\.\d{1,2})?)/gi;
+    let match = sizePriceRegex.exec(description);
+    while (match) {
+      const size = match[1].replace(/\s+/g, ' ').trim().toLowerCase();
+      const price = Number(match[2]);
+      if (!seen.has(size)) {
+        seen.add(size);
+        optionsWithPrice.push({ size, price: Number.isFinite(price) ? price : null });
+      }
+      match = sizePriceRegex.exec(description);
+    }
+
+    const sizeOnlyRegex = /\b\d{1,3}\s?(oz|ml|l)\b/gi;
+    const sizeOnlyMatches = description.match(sizeOnlyRegex) || [];
+    sizeOnlyMatches.forEach((rawSize) => {
+      const size = rawSize.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!seen.has(size)) {
+        seen.add(size);
+        optionsWithPrice.push({ size, price: null });
+      }
+    });
+
+    return optionsWithPrice;
+  };
+  const menuCategories = (() => {
+    const categories = Array.from(new Set(selectedBusinessMenu.map((item: any) => item.category || 'General')));
+    const hasDrinkItems = selectedBusinessMenu.some((item: any) => isDrinkItem(item));
+    if (hasDrinkItems && !categories.some((category) => normalizeSearchText(String(category)).includes('bebida'))) {
+      categories.push('Bebidas');
+    }
+    return ['all', ...categories];
+  })();
   const filteredMenuItems = selectedBusinessMenu
-    .filter((item: any) => activeMenuCategory === 'all' || (item.category || 'General') === activeMenuCategory)
+    .filter((item: any) => {
+      if (activeMenuCategory === 'all') return true;
+      if (normalizeSearchText(activeMenuCategory) === 'bebidas') return isDrinkItem(item);
+      return (item.category || 'General') === activeMenuCategory;
+    })
     .filter((item: any) => {
       if (!normalizedSearchQuery) return true;
       const searchable = normalizeSearchText(`${item.name || ''} ${item.description || ''} ${item.category || ''}`);
@@ -773,29 +830,13 @@ function AppContent() {
     }
   };
 
-  const handleBusinessSelect = async (business: Business) => {
-    try {
-      setMenuOriginView(view);
-      console.log('🔍 [App] Cargando negocio completo desde Firebase:', business.id);
-      // Obtener el negocio más reciente desde Firebase para tener el menú actualizado
-      const businesses = await FirebaseServiceV2.getBusinesses();
-      const updatedBusiness = businesses.find(b => b.id === business.id);
-      if (updatedBusiness) {
-        setSelectedBusiness(updatedBusiness);
-        console.log('✅ [App] Negocio actualizado:', updatedBusiness.name, updatedBusiness.image ? 'con imagen' : 'sin imagen');
-      } else {
-        setSelectedBusiness(business);
-      }
-      setActiveMenuCategory('all');
-      setMenuSearchQuery('');
-      setView('menu');
-    } catch (error) {
-      console.error('❌ [App] Error cargando negocio:', error);
-      setSelectedBusiness(business);
-      setActiveMenuCategory('all');
-      setMenuSearchQuery('');
-      setView('menu');
-    }
+  const handleBusinessSelect = (business: Business) => {
+    setSelectedBusiness(business);
+    setMenuOriginView(view);
+    setMenuSearchQuery('');
+    setActiveMenuCategory('all');
+    setSelectedMenuItem(null);
+    setView('menu' as any);
   };
 
   const toggleFavoriteByBusinessId = async (businessId: string) => {
@@ -841,10 +882,18 @@ function AppContent() {
     if (!selectedBusiness || !user) return;
     try {
       // Capture GPS before saving
-      const gps = await getClientGPS();
+      let gps = await getClientGPS();
       if (!gps) {
-        alert('Debes activar la ubicación (GPS) para poder hacer pedidos. Por favor activa la ubicación del teléfono y vuelve a intentar.');
-        return;
+        const shouldRetryLocation = window.confirm(
+          'Debes activar la ubicación (GPS) para poder hacer pedidos. Presiona "Aceptar" para intentar activar la ubicación ahora.'
+        );
+        if (!shouldRetryLocation) return;
+
+        gps = await getClientGPS();
+        if (!gps) {
+          alert('No pudimos obtener tu ubicación. Activa el permiso de ubicación "Mientras usas la app" en tu navegador/teléfono y vuelve a intentar.');
+          return;
+        }
       }
       const orderData: any = {
         clientId: user.id,
@@ -1194,7 +1243,7 @@ function AppContent() {
               </div>
 
               <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-5">
-                {['all', ...Array.from(new Set((selectedBusiness.menu || []).map((item: any) => item.category || 'General')))].map((category) => (
+                {menuCategories.map((category) => (
                   <button
                     key={category}
                     onClick={() => setActiveMenuCategory(category)}
@@ -1211,33 +1260,24 @@ function AppContent() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {filteredMenuItems.map((item: any) => (
                       <div key={item.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                        <div className="relative h-32 md:h-40 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedMenuItem(item);
+                            setSelectedDrinkSize(null);
+                          }}
+                          className="relative h-32 md:h-40 overflow-hidden w-full text-left"
+                        >
                           <img
                             src={item.image || 'https://picsum.photos/seed/food/300/200'}
                             alt={item.name}
                             className="w-full h-full object-cover"
                           />
-                        </div>
+                        </button>
                         <div className="p-3">
-                          <h5 className="font-bold text-gray-900 text-[15px] leading-tight line-clamp-2 min-h-[2.4rem]">{item.name}</h5>
-                          <p className="text-xl font-black text-gray-900 mt-2">RD$ {item.price}</p>
-                          <div className="mt-3 flex items-center justify-between gap-2">
-                            <button
-                              onClick={() => removeFromCart(item.id)}
-                              className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center"
-                              disabled={item.available === false}
-                            >
-                              <Minus className="w-4 h-4 text-gray-600" />
-                            </button>
-                            <span className="text-sm font-bold min-w-[16px] text-center">{cart.find(i => i.id === item.id)?.quantity || 0}</span>
-                            <button
-                              onClick={() => addToCart(item.id, item.name, item.price)}
-                              className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center disabled:opacity-50"
-                              disabled={item.available === false}
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          </div>
+                          <h5 className="font-bold text-gray-900 text-[15px] leading-tight line-clamp-2">{item.name}</h5>
+                          <p className="text-sm text-gray-500 mt-1 line-clamp-2 min-h-[2.5rem]">{item.description || 'Sin descripción disponible'}</p>
+                          <p className="text-lg font-black text-gray-900 mt-2">RD$ {item.price}</p>
                         </div>
                       </div>
                     ))}
@@ -1258,6 +1298,128 @@ function AppContent() {
                   <p className="text-gray-500">Prueba con otro nombre, por ejemplo: pizza, hamburguesa o jugo.</p>
                 </div>
               )}
+
+              <AnimatePresence>
+                {selectedMenuItem && (
+                  (() => {
+                    const isDrink = isDrinkItem(selectedMenuItem);
+                    const drinkSizeOptions = getDrinkSizeOptionsFromDescription(selectedMenuItem);
+                    const activeDrinkSize = selectedDrinkSize || drinkSizeOptions[0]?.size || null;
+                    const activeDrinkOption = drinkSizeOptions.find((opt) => opt.size === activeDrinkSize) || null;
+                    const selectedPrice = activeDrinkOption?.price ?? selectedMenuItem.price;
+                    return (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm flex items-end sm:items-center justify-center"
+                    onClick={() => {
+                      setSelectedMenuItem(null);
+                      setSelectedDrinkSize(null);
+                    }}
+                  >
+                    <motion.div
+                      initial={{ y: 36, opacity: 0.9 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: 36, opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 240, damping: 24 }}
+                      className="w-full h-[96dvh] sm:h-auto sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="relative h-72 sm:h-72">
+                        <img
+                          src={selectedMenuItem.image || 'https://picsum.photos/seed/food/700/500'}
+                          alt={selectedMenuItem.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedMenuItem(null);
+                            setSelectedDrinkSize(null);
+                          }}
+                          className="absolute top-4 left-4 w-10 h-10 rounded-full bg-white/90 text-gray-700 flex items-center justify-center"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button
+                          type="button"
+                          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 text-gray-700 flex items-center justify-center"
+                        >
+                          <Heart className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                        <div>
+                          <h4 className="text-[2rem] leading-tight font-black text-gray-900">{selectedMenuItem.name}</h4>
+                          <p className="text-gray-500 mt-2">{selectedMenuItem.description || 'Sin descripción disponible'}</p>
+                          <p className="text-3xl font-black text-gray-900 mt-4">RD$ {selectedPrice}</p>
+                        </div>
+
+                        {isDrink && (
+                          <div className="border-t border-gray-100 pt-4">
+                            <div className="flex items-center justify-between">
+                              <p className="text-2xl font-black text-gray-900">Tamaño</p>
+                              <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-bold">Requerido</span>
+                            </div>
+                            <p className="text-gray-500 mt-1">Elige 1 opción</p>
+
+                            <div className="mt-3 space-y-2">
+                              {(drinkSizeOptions.length > 0 ? drinkSizeOptions : [{ size: '16 oz', price: null }]).map((option) => {
+                                const sizeOption = option.size;
+                                const isSelected = (selectedDrinkSize || drinkSizeOptions[0]?.size || '16 oz') === sizeOption;
+                                return (
+                                  <button
+                                    key={sizeOption}
+                                    type="button"
+                                    onClick={() => setSelectedDrinkSize(sizeOption)}
+                                    className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200'}`}
+                                  >
+                                    <span className="font-semibold text-gray-800 uppercase">{sizeOption}</span>
+                                    <span className="text-sm font-bold text-gray-500">{option.price ? `RD$ ${option.price}` : ''}</span>
+                                    <div className={`w-5 h-5 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-gray-300'}`} />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="border-t border-gray-100 pt-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-2xl font-black text-gray-900">Preferencias</p>
+                          </div>
+                          <p className="text-gray-500 mt-1">Elige hasta 3 opciones</p>
+                        </div>
+                      </div>
+
+                      <div className="p-4 border-t border-gray-100 bg-white">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectedName = isDrink && activeDrinkSize
+                              ? `${selectedMenuItem.name} (${activeDrinkSize.toUpperCase()})`
+                              : selectedMenuItem.name;
+                            const selectedId = isDrink && activeDrinkSize
+                              ? `${selectedMenuItem.id}-${activeDrinkSize}`
+                              : selectedMenuItem.id;
+                            addToCart(selectedId, selectedName, selectedPrice);
+                            setSelectedMenuItem(null);
+                            setSelectedDrinkSize(null);
+                          }}
+                          className="w-full py-4 rounded-2xl bg-primary text-white font-black text-lg"
+                          disabled={selectedMenuItem.available === false}
+                        >
+                          {selectedMenuItem.available === false ? 'No disponible' : 'Agregar al pedido'}
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                    );
+                  })()
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
