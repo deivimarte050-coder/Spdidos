@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Clock, Star, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import Layout from './components/Layout';
 import HomeView from './components/HomeView';
@@ -189,6 +189,21 @@ function estimateMinutesFromKm(km: number): number {
   return Math.max(1, Math.round((km / AVG_SPEED_KMH) * 60) + 2);
 }
 
+/** Auto-fit map bounds to show all given positions */
+const MapAutoFit: React.FC<{ positions: [number, number][] }> = ({ positions }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (positions.length === 0) return;
+    if (positions.length === 1) {
+      map.setView(positions[0], 16);
+    } else {
+      const bounds = L.latLngBounds(positions.map(p => L.latLng(p[0], p[1])));
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    }
+  }, [positions, map]);
+  return null;
+};
+
 const TrackingView: React.FC<{
   orderId: string | null;
   orders: Order[];
@@ -341,23 +356,58 @@ const TrackingView: React.FC<{
       )}
 
       {/* Mapa cuando el repartidor está en camino */}
-      {order?.status === 'on_the_way' && deliveryLocation && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 border-b border-gray-50 flex items-center gap-2">
-            <Navigation className="w-4 h-4 text-blue-600" />
-            <span className="font-bold text-sm text-gray-900">Repartidor en camino</span>
-            <span className="ml-auto text-xs text-gray-400 animate-pulse">En vivo</span>
+      {order?.status === 'on_the_way' && deliveryLocation && (() => {
+        const clientCoords = getClientCoords();
+        const clientPos: [number, number] | null = clientCoords ? [clientCoords.lat, clientCoords.lng] : null;
+        const routePositions: [number, number][] = clientPos ? [deliverPos, clientPos] : [];
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-4 border-b border-gray-50 flex items-center gap-2">
+              <Navigation className="w-4 h-4 text-blue-600" />
+              <span className="font-bold text-sm text-gray-900">Repartidor en camino</span>
+              {distanceKm !== null && (
+                <span className="ml-1 text-xs font-semibold text-blue-500">
+                  · {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm} km`}
+                </span>
+              )}
+              <span className="ml-auto text-xs text-gray-400 animate-pulse flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-500 rounded-full inline-block" /> En vivo
+              </span>
+            </div>
+            <div className="h-[280px]">
+              <MapContainer center={deliverPos} zoom={15} className="h-full w-full" scrollWheelZoom={false}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <MapAutoFit positions={clientPos ? [deliverPos, clientPos] : [deliverPos]} />
+                <Marker position={deliverPos} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png', iconSize: [36, 36], iconAnchor: [18, 36] })}>
+                  <Popup>🛵 Tu repartidor</Popup>
+                </Marker>
+                {clientPos && (
+                  <Marker position={clientPos} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/484/484167.png', iconSize: [32, 32], iconAnchor: [16, 32] })}>
+                    <Popup>📍 Tu ubicación</Popup>
+                  </Marker>
+                )}
+                {routePositions.length === 2 && (
+                  <Polyline positions={routePositions} pathOptions={{ color: '#3b82f6', weight: 4, dashArray: '10, 8', opacity: 0.8 }} />
+                )}
+              </MapContainer>
+            </div>
+            <div className="p-3 bg-blue-50/60 flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
+                <span className="font-semibold text-gray-600">Repartidor</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
+                <span className="font-semibold text-gray-600">Tu ubicación</span>
+              </div>
+              <div className="flex items-center gap-1.5 ml-auto">
+                <span className="w-4 border-t-2 border-dashed border-blue-500 inline-block" />
+                <span className="font-semibold text-gray-500">Ruta</span>
+              </div>
+            </div>
           </div>
-          <div className="h-[220px]">
-            <MapContainer center={deliverPos} zoom={15} className="h-full w-full" scrollWheelZoom={false}>
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              <Marker position={deliverPos} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png', iconSize: [32, 32], iconAnchor: [16, 32] })}>
-                <Popup>Tu repartidor</Popup>
-              </Marker>
-            </MapContainer>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {order?.status === 'delivered' ? (
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
