@@ -473,6 +473,7 @@ function AppContent() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
   const [selectedDrinkSize, setSelectedDrinkSize] = useState<string | null>(null);
+  const [modalQuantity, setModalQuantity] = useState(1);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -1265,6 +1266,7 @@ function AppContent() {
                           onClick={() => {
                             setSelectedMenuItem(item);
                             setSelectedDrinkSize(null);
+                            setModalQuantity(1);
                           }}
                           className="relative h-32 md:h-40 overflow-hidden w-full text-left"
                         >
@@ -1394,7 +1396,24 @@ function AppContent() {
                         </div>
                       </div>
 
-                      <div className="p-4 border-t border-gray-100 bg-white">
+                      <div className="p-4 border-t border-gray-100 bg-white space-y-3">
+                        <div className="flex items-center justify-center gap-5">
+                          <button
+                            type="button"
+                            onClick={() => setModalQuantity(q => Math.max(1, q - 1))}
+                            className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center text-xl font-bold text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                          >
+                            −
+                          </button>
+                          <span className="text-2xl font-black text-gray-900 min-w-[2rem] text-center">{modalQuantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => setModalQuantity(q => q + 1)}
+                            className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center text-xl font-bold text-gray-600 hover:border-primary hover:text-primary transition-colors"
+                          >
+                            +
+                          </button>
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
@@ -1404,14 +1423,17 @@ function AppContent() {
                             const selectedId = isDrink && activeDrinkSize
                               ? `${selectedMenuItem.id}-${activeDrinkSize}`
                               : selectedMenuItem.id;
-                            addToCart(selectedId, selectedName, selectedPrice);
+                            for (let i = 0; i < modalQuantity; i++) {
+                              addToCart(selectedId, selectedName, selectedPrice);
+                            }
                             setSelectedMenuItem(null);
                             setSelectedDrinkSize(null);
+                            setModalQuantity(1);
                           }}
                           className="w-full py-4 rounded-2xl bg-primary text-white font-black text-lg"
                           disabled={selectedMenuItem.available === false}
                         >
-                          {selectedMenuItem.available === false ? 'No disponible' : 'Agregar al pedido'}
+                          {selectedMenuItem.available === false ? 'No disponible' : `Agregar al pedido · RD$ ${(selectedPrice * modalQuantity).toFixed(0)}`}
                         </button>
                       </div>
                     </motion.div>
