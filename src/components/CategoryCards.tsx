@@ -41,7 +41,11 @@ const categories = [
   },
 ];
 
-const CategoryCards = () => {
+interface CategoryCardsProps {
+  onSelectCategory?: (categoryId: string) => void;
+}
+
+const CategoryCards: React.FC<CategoryCardsProps> = ({ onSelectCategory }) => {
   return (
     <div>
       {/* Mobile: 2×2 grid */}
@@ -49,6 +53,7 @@ const CategoryCards = () => {
         {categories.map((cat) => (
           <motion.button
             key={cat.id}
+            onClick={() => onSelectCategory?.(cat.id)}
             whileTap={{ scale: 0.97 }}
             className={`${cat.color} flex items-center gap-3 p-4 rounded-2xl border border-white/60 shadow-sm text-left`}
           >
@@ -68,6 +73,7 @@ const CategoryCards = () => {
         {categories.map((cat) => (
           <motion.button
             key={cat.id}
+            onClick={() => onSelectCategory?.(cat.id)}
             whileHover={{ y: -3 }}
             whileTap={{ scale: 0.98 }}
             className={`${cat.color} flex items-center gap-4 p-5 rounded-2xl border border-white/60 shadow-sm text-left transition-shadow hover:shadow-md`}

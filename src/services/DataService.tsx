@@ -1,4 +1,4 @@
-import { User, UserRole } from '../types';
+import { User, UserRole, WeeklyBusinessSchedule } from '../types';
 
 // Interfaces para los datos
 export interface Business {
@@ -15,6 +15,9 @@ export interface Business {
   totalRevenue: number;
   address: string;
   image: string;
+  openingTime?: string;
+  closingTime?: string;
+  weeklySchedule?: Partial<WeeklyBusinessSchedule>;
   menu?: MenuItem[];
 }
 

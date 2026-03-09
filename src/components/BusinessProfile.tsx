@@ -4,6 +4,46 @@ import { Camera, MapPin, Clock, Star, Edit2, Save, X, Upload, Plus, Trash2 } fro
 import { useAuth } from '../contexts/AuthContext';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import EventService from '../services/EventService';
+import { BusinessDayKey, WeeklyBusinessSchedule } from '../types';
+
+const DAY_ORDER: { key: BusinessDayKey; label: string }[] = [
+  { key: 'monday', label: 'Lunes' },
+  { key: 'tuesday', label: 'Martes' },
+  { key: 'wednesday', label: 'Miércoles' },
+  { key: 'thursday', label: 'Jueves' },
+  { key: 'friday', label: 'Viernes' },
+  { key: 'saturday', label: 'Sábado' },
+  { key: 'sunday', label: 'Domingo' },
+];
+
+const buildDefaultWeeklySchedule = (openingTime = '08:00', closingTime = '22:00'): WeeklyBusinessSchedule => ({
+  monday: { isOpen: true, openingTime, closingTime },
+  tuesday: { isOpen: true, openingTime, closingTime },
+  wednesday: { isOpen: true, openingTime, closingTime },
+  thursday: { isOpen: true, openingTime, closingTime },
+  friday: { isOpen: true, openingTime, closingTime },
+  saturday: { isOpen: true, openingTime, closingTime },
+  sunday: { isOpen: true, openingTime, closingTime },
+});
+
+const mergeWeeklySchedule = (
+  weeklySchedule?: Partial<WeeklyBusinessSchedule>,
+  fallbackOpening = '08:00',
+  fallbackClosing = '22:00'
+): WeeklyBusinessSchedule => {
+  const base = buildDefaultWeeklySchedule(fallbackOpening, fallbackClosing);
+  if (!weeklySchedule) return base;
+
+  return DAY_ORDER.reduce((acc, day) => {
+    const incoming = weeklySchedule[day.key];
+    acc[day.key] = {
+      isOpen: incoming?.isOpen ?? base[day.key].isOpen,
+      openingTime: incoming?.openingTime || base[day.key].openingTime,
+      closingTime: incoming?.closingTime || base[day.key].closingTime,
+    };
+    return acc;
+  }, { ...base });
+};
 
 interface BusinessProfileData {
   id?: string;
@@ -15,6 +55,9 @@ interface BusinessProfileData {
   address: string;
   phone: string;
   whatsapp: string;
+  openingTime: string;
+  closingTime: string;
+  weeklySchedule: WeeklyBusinessSchedule;
   image: string;
   isActive: boolean;
   status?: string;
@@ -34,6 +77,9 @@ const BusinessProfile: React.FC = () => {
     address: 'Calle Principal #123, San Pedro de Macorís',
     phone: '809-123-4567',
     whatsapp: '809-123-4567',
+    openingTime: '08:00',
+    closingTime: '22:00',
+    weeklySchedule: buildDefaultWeeklySchedule('08:00', '22:00'),
     image: 'https://picsum.photos/seed/restaurant/400/300',
     isActive: true
   });
@@ -83,6 +129,13 @@ const BusinessProfile: React.FC = () => {
               address: business.address || '',
               phone: business.phone || '',
               whatsapp: business.whatsapp || business.phone || '',
+              openingTime: business.openingTime || '08:00',
+              closingTime: business.closingTime || '22:00',
+              weeklySchedule: mergeWeeklySchedule(
+                business.weeklySchedule,
+                business.openingTime || '08:00',
+                business.closingTime || '22:00'
+              ),
               image: business.image || 'https://picsum.photos/seed/restaurant/400/300',
               isActive: business.status === 'active',
               status: business.status || 'active'
@@ -100,6 +153,68 @@ const BusinessProfile: React.FC = () => {
 
     loadBusinessData();
   }, [user]);
+
+  const toMinutes = (value: string) => {
+    const [h, m] = (value || '').split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return (h * 60) + m;
+  };
+
+  const isOpenNow = (openingTime: string, closingTime: string) => {
+    const start = toMinutes(openingTime);
+    const end = toMinutes(closingTime);
+    if (start === null || end === null) return false;
+
+    const now = new Date();
+    const current = now.getHours() * 60 + now.getMinutes();
+    if (start < end) return current >= start && current < end;
+    return current >= start || current < end;
+  };
+
+  const formatHour = (value: string) => {
+    const [h, m] = (value || '').split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return value;
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const hh = ((h + 11) % 12) + 1;
+    return `${hh}:${String(m).padStart(2, '0')} ${suffix}`;
+  };
+
+  const getTodayKey = (): BusinessDayKey => {
+    const weekMap: BusinessDayKey[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return weekMap[new Date().getDay()];
+  };
+
+  const isOpenForSchedule = (day: { isOpen: boolean; openingTime: string; closingTime: string }) => {
+    if (!day.isOpen) return false;
+    return isOpenNow(day.openingTime, day.closingTime);
+  };
+
+  const updateWeeklyDay = (dayKey: BusinessDayKey, patch: Partial<WeeklyBusinessSchedule[BusinessDayKey]>) => {
+    setProfile((prev) => ({
+      ...prev,
+      weeklySchedule: {
+        ...prev.weeklySchedule,
+        [dayKey]: {
+          ...prev.weeklySchedule[dayKey],
+          ...patch,
+        },
+      },
+    }));
+  };
+
+  const applyDefaultHoursToAllDays = () => {
+    setProfile((prev) => ({
+      ...prev,
+      weeklySchedule: DAY_ORDER.reduce((acc, day) => {
+        acc[day.key] = {
+          ...prev.weeklySchedule[day.key],
+          openingTime: prev.openingTime,
+          closingTime: prev.closingTime,
+        };
+        return acc;
+      }, { ...prev.weeklySchedule }),
+    }));
+  };
 
   const getSafeImage = async (imageData: string): Promise<string> => {
     if (!imageData || !imageData.startsWith('data:')) return imageData;
@@ -135,6 +250,7 @@ const BusinessProfile: React.FC = () => {
 
     try {
       const safeImage = await getSafeImage(profile.image);
+      const mondaySchedule = profile.weeklySchedule.monday;
       const updateData = {
         name: profile.name,
         description: profile.description,
@@ -145,6 +261,9 @@ const BusinessProfile: React.FC = () => {
         address: profile.address,
         phone: profile.phone,
         whatsapp: profile.whatsapp,
+        openingTime: mondaySchedule.openingTime,
+        closingTime: mondaySchedule.closingTime,
+        weeklySchedule: profile.weeklySchedule,
         image: safeImage,
         status: profile.isActive ? 'active' : 'inactive'
       };
@@ -383,6 +502,85 @@ const BusinessProfile: React.FC = () => {
                 </div>
               )}
             </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Horario base</label>
+              {isEditing ? (
+                <div className="mt-1 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="time"
+                      value={profile.openingTime}
+                      onChange={(e) => setProfile({ ...profile, openingTime: e.target.value })}
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                    <input
+                      type="time"
+                      value={profile.closingTime}
+                      onChange={(e) => setProfile({ ...profile, closingTime: e.target.value })}
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyDefaultHoursToAllDays}
+                    className="text-xs font-bold text-primary hover:text-primary/80"
+                  >
+                    Aplicar horario base a toda la semana
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-gray-700 mt-1">
+                  <Clock className="w-4 h-4" />
+                  <span>{formatHour(profile.openingTime)} - {formatHour(profile.closingTime)}</span>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Horario semanal</label>
+              <div className="mt-2 space-y-2">
+                {DAY_ORDER.map((day) => {
+                  const schedule = profile.weeklySchedule[day.key];
+                  return (
+                    <div key={day.key} className="grid grid-cols-[90px_1fr] gap-2 items-center">
+                      <span className="text-sm font-semibold text-gray-700">{day.label}</span>
+                      {isEditing ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateWeeklyDay(day.key, { isOpen: !schedule.isOpen })}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold ${schedule.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+                          >
+                            {schedule.isOpen ? 'Abierto' : 'Cerrado'}
+                          </button>
+                          <input
+                            type="time"
+                            value={schedule.openingTime}
+                            disabled={!schedule.isOpen}
+                            onChange={(e) => updateWeeklyDay(day.key, { openingTime: e.target.value })}
+                            className="w-full p-2 border border-gray-200 rounded-lg disabled:opacity-40"
+                          />
+                          <input
+                            type="time"
+                            value={schedule.closingTime}
+                            disabled={!schedule.isOpen}
+                            onChange={(e) => updateWeeklyDay(day.key, { closingTime: e.target.value })}
+                            className="w-full p-2 border border-gray-200 rounded-lg disabled:opacity-40"
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-700">
+                          {schedule.isOpen
+                            ? `${formatHour(schedule.openingTime)} - ${formatHour(schedule.closingTime)}`
+                            : 'Cerrado'}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -392,6 +590,15 @@ const BusinessProfile: React.FC = () => {
             <p className="font-bold text-gray-900">Estado del Negocio</p>
             <p className="text-sm text-gray-500">
               {profile.isActive ? 'Tu negocio está visible para clientes' : 'Tu negocio está oculto para clientes'}
+            </p>
+            <p className="text-sm font-semibold mt-1 text-gray-700">
+              {(() => {
+                const todaySchedule = profile.weeklySchedule[getTodayKey()];
+                if (!todaySchedule.isOpen) return 'Cerrado por hoy';
+                return isOpenForSchedule(todaySchedule)
+                  ? `Abierto ahora · Cierra a las ${formatHour(todaySchedule.closingTime)}`
+                  : `Cerrado por hoy · Abre a las ${formatHour(todaySchedule.openingTime)}`;
+              })()}
             </p>
           </div>
           <button

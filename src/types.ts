@@ -2,6 +2,16 @@ export type UserRole = 'client' | 'delivery' | 'business' | 'admin';
 
 export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'picked_up' | 'on_the_way' | 'arrived' | 'delivered' | 'cancelled' | 'rejected';
 
+export type BusinessDayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+export interface BusinessDaySchedule {
+  isOpen: boolean;
+  openingTime: string;
+  closingTime: string;
+}
+
+export type WeeklyBusinessSchedule = Record<BusinessDayKey, BusinessDaySchedule>;
+
 export interface User {
   id: string;
   name: string;
@@ -9,6 +19,7 @@ export interface User {
   role: UserRole;
   whatsapp: string;
   phone?: string;
+  favoriteBusinessIds?: string[];
   password?: string;
   status?: 'active' | 'inactive';
   createdAt?: string;
@@ -49,6 +60,9 @@ export interface Business {
   address: string;
   image: string;
   status: 'pending' | 'active' | 'inactive';
+  openingTime?: string;
+  closingTime?: string;
+  weeklySchedule?: Partial<WeeklyBusinessSchedule>;
   menu?: MenuItem[];
   createdAt: string;
   totalOrders?: number;
@@ -121,4 +135,4 @@ export interface CartItem {
   quantity: number;
 }
 
-export type View = 'home' | 'restaurant' | 'tracking' | 'orders' | 'profile' | 'addresses' | 'favorites' | 'history' | 'settings' | 'business';
+export type View = 'home' | 'restaurants' | 'restaurant' | 'tracking' | 'orders' | 'profile' | 'addresses' | 'favorites' | 'history' | 'settings' | 'business';

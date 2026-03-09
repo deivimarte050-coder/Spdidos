@@ -5,6 +5,7 @@ import CategoryCards from './CategoryCards';
 
 interface HomeViewProps {
   children?: React.ReactNode;
+  onSelectCategory?: (categoryId: string) => void;
   announcement?: {
     topText: string;
     highlightText: string;
@@ -20,8 +21,9 @@ const fallbackAnnouncement = {
   imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center',
 };
 
-const HomeView: React.FC<HomeViewProps> = ({ children, announcement }) => {
+const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCategory }) => {
   const banner = announcement ?? fallbackAnnouncement;
+  const handleCategorySelect = (categoryId: string) => onSelectCategory?.(categoryId);
 
   return (
     <div className="pb-12">
@@ -98,7 +100,7 @@ const HomeView: React.FC<HomeViewProps> = ({ children, announcement }) => {
         </motion.div>
 
         {/* ── Category cards ────────────────────────────────────────────── */}
-        <CategoryCards />
+        <CategoryCards onSelectCategory={handleCategorySelect} />
 
         {/* ── Business list (children) ──────────────────────────────────── */}
         {children}
