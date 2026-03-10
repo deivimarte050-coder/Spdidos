@@ -46,21 +46,32 @@ export async function initFCMToken(): Promise<string | null> {
 }
 
 // Handle foreground messages (app is open) — show browser notification manually
-export function listenFCMForeground() {
+export function listenFCMForeground(
+  onForegroundNotification?: (notification: { title: string; body: string; tag: string }) => void
+) {
   try {
-    onMessage(getMsg(), (payload) => {
+    return onMessage(getMsg(), (payload) => {
       const notif = payload.notification;
       if (!notif) return;
+      const title = notif.title || 'Spdidos';
+      const body = notif.body || '';
+      const tag = (payload.data?.tag as string) || 'spdidos-fg';
+
+      onForegroundNotification?.({ title, body, tag });
+
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => {
           reg.active?.postMessage({
             type: 'SHOW_NOTIFICATION',
-            title: notif.title || 'Spdidos',
-            body:  notif.body  || '',
-            tag:   (payload.data?.tag as string) || 'spdidos-fg',
+            title,
+            body,
+            tag,
           });
         });
       }
     });
-  } catch { /* messaging not available in this context */ }
+  } catch {
+    // messaging not available in this context
+    return () => {};
+  }
 }

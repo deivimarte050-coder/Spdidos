@@ -767,6 +767,7 @@ function AppContent() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
+  const [hasUnreadNotificationAlert, setHasUnreadNotificationAlert] = useState(false);
   const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
   const [pendingSharedTarget, setPendingSharedTarget] = useState<{ businessId: string; itemId?: string; imageUrl?: string } | null>(null);
   const [forceAuthForSharedOrder, setForceAuthForSharedOrder] = useState(false);
@@ -790,6 +791,36 @@ function AppContent() {
   const deliveryKnownReadyIds  = useRef<Set<string>>(new Set());
   const deliveryGlobalInited   = useRef(false);
 
+  const getNotificationAlertStorageKey = (userId: string) => `client_notification_alert_${userId}`;
+
+  const persistNotificationAlert = (nextValue: boolean) => {
+    setHasUnreadNotificationAlert(nextValue);
+    if (!user?.id || user.role !== 'client') return;
+    try {
+      localStorage.setItem(getNotificationAlertStorageKey(user.id), nextValue ? '1' : '0');
+    } catch {
+      // ignore localStorage errors
+    }
+  };
+
+  const handleNotificationBellClick = () => {
+    setView('orders');
+    persistNotificationAlert(false);
+  };
+
+  useEffect(() => {
+    if (!user?.id || user.role !== 'client') {
+      setHasUnreadNotificationAlert(false);
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(getNotificationAlertStorageKey(user.id));
+      setHasUnreadNotificationAlert(saved === '1');
+    } catch {
+      setHasUnreadNotificationAlert(false);
+    }
+  }, [user?.id, user?.role]);
+
   // ── FCM: register SW, request permission, get token, start foreground listener
   useEffect(() => {
     if (!user?.id) return;
@@ -802,8 +833,15 @@ function AppContent() {
         (user as any).businessId ?? undefined
       );
     });
-    listenFCMForeground();
-  }, [user?.id]);
+    const unsubForeground = listenFCMForeground(() => {
+      if (user.role === 'client') {
+        persistNotificationAlert(true);
+      }
+    });
+    return () => {
+      unsubForeground?.();
+    };
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     const unsubscribe = FirebaseServiceV2.subscribeToHomeAnnouncement((announcement) => {
@@ -854,6 +892,7 @@ function AppContent() {
         if (o.status === 'arrived' && !arrivedNotifiedIds.current.has(o.id)) {
           arrivedNotifiedIds.current.add(o.id);
           setArrivedOrderId(o.id);
+          persistNotificationAlert(true);
           soundService.startRinging();
           showPushNotification('¡Tu repartidor llegó! 🛵', 'Está en tu puerta esperando — abre la app para confirmar', 'arrived');
         }
@@ -1580,6 +1619,8 @@ function AppContent() {
       showCartHint={showCartHint}
       onCartHintDismiss={() => setShowCartHint(false)}
       orderCount={activeOrders.length}
+      hasUnreadNotificationAlert={hasUnreadNotificationAlert}
+      onNotificationBellClick={handleNotificationBellClick}
     >
       <AnimatePresence mode="wait">
         {view === 'home' && (

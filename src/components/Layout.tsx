@@ -14,6 +14,8 @@ interface LayoutProps {
   showCartHint?: boolean;
   onCartHintDismiss?: () => void;
   orderCount?: number;
+  hasUnreadNotificationAlert?: boolean;
+  onNotificationBellClick?: () => void;
 }
 
 const desktopNavItems = [
@@ -32,6 +34,8 @@ const Layout: React.FC<LayoutProps> = ({
   showCartHint = false,
   onCartHintDismiss,
   orderCount = 0,
+  hasUnreadNotificationAlert = false,
+  onNotificationBellClick,
 }) => {
   const { user } = useAuth();
 
@@ -104,11 +108,20 @@ const Layout: React.FC<LayoutProps> = ({
           <button className="relative p-2.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
             <MonitorSmartphone className="w-5 h-5" />
           </button>
-          <button className="relative p-2.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
+          <button
+            onClick={() => onNotificationBellClick?.()}
+            className={`relative p-2.5 rounded-full text-gray-500 transition-colors ${hasUnreadNotificationAlert ? 'bg-amber-50 ring-2 ring-amber-300 animate-pulse' : 'bg-gray-50 hover:bg-gray-100'}`}
+            title={hasUnreadNotificationAlert ? 'Atención: tienes una nueva notificación' : 'Notificaciones'}
+          >
             <Bell className="w-5 h-5" />
             {orderCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
                 {orderCount}
+              </span>
+            )}
+            {hasUnreadNotificationAlert && (
+              <span className="absolute -bottom-9 left-1/2 -translate-x-1/2 whitespace-nowrap bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow-md">
+                Atencion nueva notificacion
               </span>
             )}
           </button>
@@ -160,11 +173,20 @@ const Layout: React.FC<LayoutProps> = ({
               👆 Dale al carrito para confirmar y pagar
             </motion.button>
           )}
-          <button className="relative p-2 bg-gray-50 rounded-full text-gray-500">
+          <button
+            onClick={() => onNotificationBellClick?.()}
+            className={`relative p-2 rounded-full text-gray-500 ${hasUnreadNotificationAlert ? 'bg-amber-50 ring-2 ring-amber-300 animate-pulse' : 'bg-gray-50'}`}
+            title={hasUnreadNotificationAlert ? 'Atención: tienes una nueva notificación' : 'Notificaciones'}
+          >
             <Bell className="w-5 h-5" />
             {orderCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
                 {orderCount}
+              </span>
+            )}
+            {hasUnreadNotificationAlert && (
+              <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow-md">
+                Atencion nueva notificacion
               </span>
             )}
           </button>

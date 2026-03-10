@@ -93,3 +93,59 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
     return;
   }
 });
+
+// ─── Trigger 3: admin broadcast notifications ───────────────────────────────
+export const onAdminNotificationCreated = onDocumentCreated('admin_notifications/{notificationId}', async (event) => {
+  const payload = event.data?.data() as Record<string, any> | undefined;
+  if (!payload) return;
+
+  const title = String(payload['title'] || 'Spdidos');
+  const body = String(payload['body'] || '').trim();
+  const target = String(payload['target'] || 'both');
+  if (!body) return;
+
+  const tokenGroups: string[][] = [];
+  if (target === 'clients' || target === 'both' || target === 'all') {
+    tokenGroups.push(await getTokens('client'));
+  }
+  if (target === 'businesses' || target === 'both' || target === 'all') {
+    tokenGroups.push(await getTokens('business'));
+  }
+  if (target === 'delivery' || target === 'all') {
+    tokenGroups.push(await getTokens('delivery'));
+  }
+
+  const tokens = Array.from(new Set(tokenGroups.flat().filter(Boolean)));
+  const statusRef = event.data?.ref;
+
+  if (!tokens.length) {
+    if (statusRef) {
+      await statusRef.set({
+        status: 'no_tokens',
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        sentCount: 0,
+      }, { merge: true });
+    }
+    return;
+  }
+
+  try {
+    await sendTo(tokens, title, body, `admin-${target}`);
+    if (statusRef) {
+      await statusRef.set({
+        status: 'sent',
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        sentCount: tokens.length,
+      }, { merge: true });
+    }
+  } catch (error: any) {
+    if (statusRef) {
+      await statusRef.set({
+        status: 'error',
+        errorMessage: error?.message || 'unknown_error',
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    throw error;
+  }
+});

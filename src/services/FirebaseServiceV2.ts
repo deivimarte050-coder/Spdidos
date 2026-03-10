@@ -32,6 +32,7 @@ const COLLECTIONS = {
   ORDERS: 'orders',
   DELIVERY_PERSONS: 'deliveryPersons',
   DELIVERY_EARNINGS: 'delivery_earnings',
+  ADMIN_NOTIFICATIONS: 'admin_notifications',
   DELIVERY_LOCATIONS: 'delivery_locations',
   CLIENT_LOCATIONS: 'client_locations',
   FCM_TOKENS: 'fcm_tokens',
@@ -493,6 +494,27 @@ class FirebaseServiceV2 {
       });
     } catch (err) {
       console.error('[FCM] Error saving token:', err);
+    }
+  }
+
+  async queueAdminNotification(data: {
+    title: string;
+    body: string;
+    target: 'clients' | 'businesses' | 'delivery' | 'both' | 'all';
+    createdBy?: string;
+  }): Promise<void> {
+    try {
+      await addDoc(collection(db, COLLECTIONS.ADMIN_NOTIFICATIONS), {
+        title: data.title,
+        body: data.body,
+        target: data.target,
+        createdBy: data.createdBy || null,
+        status: 'pending',
+        createdAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error encolando notificación admin:', error);
+      throw error;
     }
   }
 }

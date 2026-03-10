@@ -45,7 +45,7 @@ const DEFAULT_ANNOUNCEMENT_IMAGE_URL = 'https://images.unsplash.com/photo-156890
 
 const AdminView: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports' | 'announcements'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports' | 'announcements' | 'notifications'>('dashboard');
   const [deliveryUsers, setDeliveryUsers] = useState<AppUser[]>([]);
   const [orderFilter, setOrderFilter] = useState<string>('active');
   const [newDelivery, setNewDelivery] = useState({ name: '', email: '', phone: '', whatsapp: '', password: '', vehicleType: '', cedula: '' });
@@ -64,6 +64,16 @@ const AdminView: React.FC = () => {
     imageUrl: DEFAULT_ANNOUNCEMENT_IMAGE_URL,
   });
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
+  const [notificationForm, setNotificationForm] = useState<{
+    title: string;
+    body: string;
+    target: 'clients' | 'businesses' | 'delivery' | 'both' | 'all';
+  }>({
+    title: '',
+    body: '',
+    target: 'both',
+  });
+  const [sendingNotification, setSendingNotification] = useState(false);
 
   const [newBusiness, setNewBusiness] = useState({
     name: '',
@@ -165,6 +175,33 @@ const AdminView: React.FC = () => {
     }
   };
 
+  const handleSendNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const title = notificationForm.title.trim();
+    const body = notificationForm.body.trim();
+
+    if (!title || !body) {
+      alert('Completa el título y el mensaje para enviar la notificación.');
+      return;
+    }
+
+    setSendingNotification(true);
+    try {
+      await FirebaseServiceV2.queueAdminNotification({
+        title,
+        body,
+        target: notificationForm.target,
+        createdBy: user?.id,
+      });
+      alert('✅ Notificación enviada.');
+      setNotificationForm((prev) => ({ ...prev, title: '', body: '' }));
+    } catch (error: any) {
+      alert(`❌ Error enviando notificación: ${error?.message || 'Error desconocido'}`);
+    } finally {
+      setSendingNotification(false);
+    }
+  };
+
   const handleAnnouncementImageUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -196,6 +233,7 @@ const AdminView: React.FC = () => {
     { id: 'businesses', label: 'Lista de Negocios', icon: Store },
     { id: 'orders', label: 'Ver Pedidos', icon: ShoppingCart },
     { id: 'users', label: 'Usuarios', icon: Users },
+    { id: 'notifications', label: 'Notificaciones', icon: Bell },
     { id: 'reports', label: 'Reportes', icon: FileText },
     { id: 'announcements', label: 'Anuncios', icon: Megaphone }
   ];
@@ -517,6 +555,7 @@ const AdminView: React.FC = () => {
               {activeTab === 'businesses' && 'Gestiona todos los negocios activos'}
               {activeTab === 'orders' && 'Monitorea todos los pedidos en tiempo real'}
               {activeTab === 'users' && 'Administra todos los usuarios registrados'}
+              {activeTab === 'notifications' && 'Envía notificaciones push a clientes, negocios, repartidores o a todos'}
               {activeTab === 'reports' && 'Analiza el rendimiento de la plataforma'}
               {activeTab === 'announcements' && 'Edita el banner principal mostrado en el home de clientes'}
             </p>
@@ -1314,6 +1353,74 @@ const AdminView: React.FC = () => {
                     <p className="text-sm text-gray-400 mt-1">Pedidos Completados</p>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Announcements */}
+          {activeTab === 'notifications' && (
+            <motion.div
+              key="notifications"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-3xl"
+            >
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="text-xl font-black text-gray-900 mb-1">Enviar notificaciones</h3>
+                <p className="text-sm text-gray-400 mb-6">
+                  Puedes enviar por separado a clientes, negocios o repartidores, o enviarla a todos al mismo tiempo.
+                </p>
+
+                <form onSubmit={handleSendNotification} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Destinatarios</label>
+                    <select
+                      value={notificationForm.target}
+                      onChange={(e) => setNotificationForm((prev) => ({
+                        ...prev,
+                        target: e.target.value as 'clients' | 'businesses' | 'delivery' | 'both' | 'all',
+                      }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    >
+                      <option value="clients">Solo clientes</option>
+                      <option value="businesses">Solo negocios</option>
+                      <option value="delivery">Solo repartidores</option>
+                      <option value="both">Clientes y negocios</option>
+                      <option value="all">Todos (clientes, negocios y repartidores)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Título</label>
+                    <input
+                      type="text"
+                      value={notificationForm.title}
+                      onChange={(e) => setNotificationForm((prev) => ({ ...prev, title: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="Ej: Promoción de hoy"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Mensaje</label>
+                    <textarea
+                      value={notificationForm.body}
+                      onChange={(e) => setNotificationForm((prev) => ({ ...prev, body: e.target.value }))}
+                      rows={4}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                      placeholder="Escribe el mensaje de la notificación"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={sendingNotification}
+                    className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary/90 disabled:opacity-70 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Bell className="w-4 h-4" /> {sendingNotification ? 'Enviando...' : 'Enviar notificación'}
+                  </button>
+                </form>
               </div>
             </motion.div>
           )}
