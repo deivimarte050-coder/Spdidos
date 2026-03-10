@@ -93,6 +93,9 @@ const Auth: React.FC = () => {
                       placeholder="8091234567"
                     />
                   </div>
+                  <p className="text-xs text-amber-700 font-semibold ml-1">
+                    Por favor, es importante que este sea tu número real de WhatsApp para futuros pedidos.
+                  </p>
                 </div>
               </>
             )}
