@@ -31,6 +31,7 @@ const COLLECTIONS = {
   BUSINESSES: 'businesses',
   ORDERS: 'orders',
   DELIVERY_PERSONS: 'deliveryPersons',
+  DELIVERY_EARNINGS: 'delivery_earnings',
   DELIVERY_LOCATIONS: 'delivery_locations',
   CLIENT_LOCATIONS: 'client_locations',
   FCM_TOKENS: 'fcm_tokens',
@@ -306,6 +307,43 @@ class FirebaseServiceV2 {
         callback(null);
       }
     }, (err) => console.error('❌ [FirebaseV2] subscribeToClientLocation error:', err));
+  }
+
+  async upsertDeliveryEarningEntry(deliveryId: string, orderId: string, amount: number, deliveredAt: string): Promise<void> {
+    try {
+      const deliveredDate = new Date(deliveredAt);
+      const safeDate = Number.isFinite(deliveredDate.getTime()) ? deliveredDate : new Date();
+      const dateKey = safeDate.toISOString().slice(0, 10);
+      const earningRef = doc(db, COLLECTIONS.DELIVERY_EARNINGS, `${deliveryId}_${orderId}`);
+      await setDoc(earningRef, {
+        deliveryId,
+        orderId,
+        amount: Number.isFinite(amount) ? Math.max(0, amount) : 0,
+        deliveredAt: safeDate.toISOString(),
+        dateKey,
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+    } catch (error: any) {
+      console.error('❌ [FirebaseV2] Error guardando ganancia de delivery:', error);
+      throw error;
+    }
+  }
+
+  subscribeToDeliveryEarnings(deliveryId: string, callback: (entries: any[]) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.DELIVERY_EARNINGS),
+      where('deliveryId', '==', deliveryId)
+    );
+    return onSnapshot(q, (snap) => {
+      const entries = snap.docs
+        .map((d) => ({ id: d.id, ...convertTimestamp(d.data()) }))
+        .sort((a: any, b: any) => {
+          const aTime = new Date(a.deliveredAt || 0).getTime();
+          const bTime = new Date(b.deliveredAt || 0).getTime();
+          return bTime - aTime;
+        });
+      callback(entries);
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToDeliveryEarnings error:', err));
   }
 
   // ============ REPARTIDORES ============

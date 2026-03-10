@@ -205,6 +205,8 @@ const DeliveryView: React.FC = () => {
   const [isAvailable, setIsAvailable] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const [earningsNow, setEarningsNow] = useState(() => Date.now());
+  const [showEarningsHistory, setShowEarningsHistory] = useState(false);
+  const [earningsEntries, setEarningsEntries] = useState<Array<{ id: string; orderId?: string; amount?: number; deliveredAt?: string; dateKey?: string }>>([]);
   const [myLocation, setMyLocation] = useState<[number, number]>(SPM_CENTER);
   const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
@@ -231,6 +233,17 @@ const DeliveryView: React.FC = () => {
       setMyOrder(mine || null);
       setCompletedOrders(completed);
       setCancelledOrders(cancelled);
+    });
+    return unsub;
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setEarningsEntries([]);
+      return;
+    }
+    const unsub = FirebaseServiceV2.subscribeToDeliveryEarnings(user.id, (entries) => {
+      setEarningsEntries(Array.isArray(entries) ? entries : []);
     });
     return unsub;
   }, [user?.id]);
@@ -313,6 +326,14 @@ const DeliveryView: React.FC = () => {
         deliveredAt,
         deliveryDurationMinutes,
       };
+
+      await FirebaseServiceV2.upsertDeliveryEarningEntry(
+        user?.id || deliveredOrder.deliveryId || '',
+        deliveredOrder.id,
+        getOrderEarning(deliveredOrder),
+        deliveredAt
+      );
+
       setCompletedOrders((prev) => [deliveredOrder, ...prev.filter((o) => o.id !== deliveredOrder.id)]);
       setMyOrder(null);
       setIsNavigating(false);
@@ -418,12 +439,11 @@ const DeliveryView: React.FC = () => {
     </div>
   );
 
-  const getWeekStart = (date: Date) => {
-    const copy = new Date(date);
-    copy.setHours(0, 0, 0, 0);
-    const day = (copy.getDay() + 6) % 7;
-    copy.setDate(copy.getDate() - day);
-    return copy;
+  const getDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const getOrderEarning = (order: Order) => {
@@ -439,67 +459,65 @@ const DeliveryView: React.FC = () => {
     return 0;
   };
 
+  useEffect(() => {
+    if (!user?.id) return;
+    const deliveredByMe = (Array.isArray(completedOrders) ? completedOrders : []).filter((o) => o?.deliveryId === user.id);
+    deliveredByMe.forEach((order) => {
+      const deliveredAt = String(order.deliveredAt || order.createdAt || new Date().toISOString());
+      const amount = getOrderEarning(order);
+      FirebaseServiceV2.upsertDeliveryEarningEntry(user.id, order.id, amount, deliveredAt).catch((err) => {
+        console.error('Error sincronizando ganancia en Firebase:', err);
+      });
+    });
+  }, [completedOrders, user?.id]);
+
   const earningsData = useMemo(() => {
     try {
       const now = new Date(earningsNow);
-      const todayStart = new Date(now);
-      todayStart.setHours(0, 0, 0, 0);
-      const weekStart = getWeekStart(now);
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const currentWeekKey = weekStart.toISOString().slice(0, 10);
+      const todayKey = getDateKey(now);
+      const dailyMap = new Map<string, { total: number; deliveries: number }>();
 
-      let today = 0;
-      let week = 0;
-      let month = 0;
-      const weeklyMap = new Map<string, { total: number; deliveries: number }>();
-
-      (Array.isArray(completedOrders) ? completedOrders : []).forEach((order) => {
-        if (!order) return;
-        const deliveredDate = new Date((order.deliveredAt || order.createdAt || '') as string);
+      (Array.isArray(earningsEntries) ? earningsEntries : []).forEach((entry) => {
+        if (!entry) return;
+        const deliveredDate = new Date((entry.deliveredAt || '') as string);
         if (!Number.isFinite(deliveredDate.getTime())) return;
 
-        const earning = getOrderEarning(order);
-        if (deliveredDate >= todayStart) today += earning;
-        if (deliveredDate >= weekStart) week += earning;
-        if (deliveredDate >= monthStart) month += earning;
-
-        const orderWeekStart = getWeekStart(deliveredDate);
-        const key = orderWeekStart.toISOString().slice(0, 10);
-        if (key === currentWeekKey) return;
-        const prev = weeklyMap.get(key) || { total: 0, deliveries: 0 };
-        weeklyMap.set(key, { total: prev.total + earning, deliveries: prev.deliveries + 1 });
+        const amount = Number(entry.amount);
+        const earning = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+        const key = getDateKey(deliveredDate);
+        const prev = dailyMap.get(key) || { total: 0, deliveries: 0 };
+        dailyMap.set(key, { total: prev.total + earning, deliveries: prev.deliveries + 1 });
       });
 
-      const weeklyHistory = Array.from(weeklyMap.entries())
-        .map(([startKey, value]) => {
-          const start = new Date(`${startKey}T00:00:00`);
-          const end = new Date(start);
-          end.setDate(end.getDate() + 6);
+      const dailyHistory = Array.from(dailyMap.entries())
+        .map(([dateKey, value]) => {
+          const date = new Date(`${dateKey}T00:00:00`);
           return {
-            startKey,
-            label: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
+            dateKey,
+            label: date.toLocaleDateString(),
             total: value.total,
             deliveries: value.deliveries,
           };
         })
-        .sort((a, b) => (a.startKey < b.startKey ? 1 : -1));
+        .sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1));
+
+      const today = dailyMap.get(todayKey)?.total || 0;
+      const total = dailyHistory.reduce((sum, day) => sum + day.total, 0);
 
       return {
         today,
-        week,
-        month,
-        weeklyHistory,
+        total,
+        dailyHistory,
       };
     } catch (error) {
       console.error('Error calculando ganancias del repartidor:', error);
       return {
         today: 0,
-        week: 0,
-        month: 0,
-        weeklyHistory: [] as { startKey: string; label: string; total: number; deliveries: number }[],
+        total: 0,
+        dailyHistory: [] as { dateKey: string; label: string; total: number; deliveries: number }[],
       };
     }
-  }, [completedOrders, earningsNow]);
+  }, [earningsEntries, earningsNow]);
 
   const renderEarningsPanel = () => (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 space-y-4">
@@ -508,42 +526,45 @@ const DeliveryView: React.FC = () => {
         <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">Repartidor</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
           <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Hoy</p>
           <p className="text-2xl font-black text-emerald-800 mt-1">RD$ {earningsData.today.toFixed(0)}</p>
         </div>
-        <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Semana</p>
-          <p className="text-2xl font-black text-blue-800 mt-1">RD$ {earningsData.week.toFixed(0)}</p>
-        </div>
-        <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-purple-700">Mes</p>
-          <p className="text-2xl font-black text-purple-800 mt-1">RD$ {earningsData.month.toFixed(0)}</p>
-        </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-xs font-black uppercase tracking-wide text-gray-700">Historial semanal</h4>
-          <span className="text-[11px] text-gray-500">La semana actual se reinicia automáticamente</span>
-        </div>
-        {earningsData.weeklyHistory.length === 0 ? (
-          <p className="text-sm text-gray-500">No hay semanas anteriores con entregas.</p>
-        ) : (
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-            {earningsData.weeklyHistory.map((entry) => (
-              <div key={entry.startKey} className="bg-white border border-gray-100 rounded-xl p-3">
-                <p className="text-xs font-bold text-gray-500">{entry.label}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <p className="text-sm text-gray-600">{entry.deliveries} pedidos</p>
-                  <p className="text-sm font-black text-gray-900">RD$ {entry.total.toFixed(0)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowEarningsHistory((prev) => !prev)}
+          className="px-3 py-2 rounded-xl text-xs font-black bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+        >
+          {showEarningsHistory ? 'Ocultar historial de ganancias' : 'Historial de ganancias'}
+        </button>
       </div>
+
+      {showEarningsHistory && (
+        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-black uppercase tracking-wide text-gray-700">Historial diario</h4>
+            <span className="text-sm font-black text-gray-900">Total: RD$ {earningsData.total.toFixed(0)}</span>
+          </div>
+          {earningsData.dailyHistory.length === 0 ? (
+            <p className="text-sm text-gray-500">Aún no hay ganancias guardadas.</p>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {earningsData.dailyHistory.map((entry) => (
+                <div key={entry.dateKey} className="bg-white border border-gray-100 rounded-xl p-3">
+                  <p className="text-xs font-bold text-gray-500">{entry.label}</p>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-sm text-gray-600">{entry.deliveries} pedidos</p>
+                    <p className="text-sm font-black text-gray-900">RD$ {entry.total.toFixed(0)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
