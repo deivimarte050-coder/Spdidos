@@ -11,6 +11,8 @@ interface LayoutProps {
   onViewChange: (view: any) => void;
   cartCount: number;
   onCartClick: () => void;
+  showCartHint?: boolean;
+  onCartHintDismiss?: () => void;
   orderCount?: number;
 }
 
@@ -27,6 +29,8 @@ const Layout: React.FC<LayoutProps> = ({
   onViewChange,
   cartCount,
   onCartClick,
+  showCartHint = false,
+  onCartHintDismiss,
   orderCount = 0,
 }) => {
   const { user } = useAuth();
@@ -69,8 +73,11 @@ const Layout: React.FC<LayoutProps> = ({
         {/* Right icons */}
         <div className="flex items-center gap-2">
           <button
-            onClick={onCartClick}
-            className="relative p-2.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+            onClick={() => {
+              onCartClick();
+              onCartHintDismiss?.();
+            }}
+            className={`relative p-2.5 rounded-full text-gray-500 transition-colors ${showCartHint ? 'bg-primary/10 ring-2 ring-primary/40 animate-pulse' : 'bg-gray-50 hover:bg-gray-100'}`}
           >
             <ShoppingBag className="w-5 h-5" />
             {cartCount > 0 && (
@@ -79,6 +86,21 @@ const Layout: React.FC<LayoutProps> = ({
               </span>
             )}
           </button>
+          {showCartHint && (
+            <motion.button
+              type="button"
+              onClick={() => {
+                onCartClick();
+                onCartHintDismiss?.();
+              }}
+              initial={{ opacity: 0, y: -8, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.95 }}
+              className="absolute top-16 right-20 z-50 bg-primary text-white text-xs font-black px-3 py-2 rounded-xl shadow-lg"
+            >
+              Toca el carrito para confirmar y pagar
+            </motion.button>
+          )}
           <button className="relative p-2.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
             <MonitorSmartphone className="w-5 h-5" />
           </button>
@@ -110,8 +132,11 @@ const Layout: React.FC<LayoutProps> = ({
         </button>
         <div className="flex items-center gap-2">
           <button
-            onClick={onCartClick}
-            className="relative p-2 bg-gray-50 rounded-full text-gray-500"
+            onClick={() => {
+              onCartClick();
+              onCartHintDismiss?.();
+            }}
+            className={`relative p-2 rounded-full text-gray-500 transition-all ${showCartHint ? 'bg-primary/10 ring-2 ring-primary/40 animate-pulse' : 'bg-gray-50'}`}
           >
             <ShoppingBag className="w-5 h-5" />
             {cartCount > 0 && (
@@ -120,6 +145,21 @@ const Layout: React.FC<LayoutProps> = ({
               </span>
             )}
           </button>
+          {showCartHint && (
+            <motion.button
+              type="button"
+              onClick={() => {
+                onCartClick();
+                onCartHintDismiss?.();
+              }}
+              initial={{ opacity: 0, y: -8, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.95 }}
+              className="absolute top-14 right-16 z-50 max-w-[180px] bg-primary text-white text-[11px] leading-tight font-black px-3 py-2 rounded-xl shadow-lg"
+            >
+              👆 Dale al carrito para confirmar y pagar
+            </motion.button>
+          )}
           <button className="relative p-2 bg-gray-50 rounded-full text-gray-500">
             <Bell className="w-5 h-5" />
             {orderCount > 0 && (

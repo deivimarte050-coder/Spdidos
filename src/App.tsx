@@ -577,6 +577,7 @@ function AppContent() {
   const [selectedDrinkSize, setSelectedDrinkSize] = useState<string | null>(null);
   const [modalQuantity, setModalQuantity] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [showCartHint, setShowCartHint] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -617,7 +618,6 @@ function AppContent() {
     });
     return () => unsubscribe();
   }, []);
-
 
   useEffect(() => {
     if (!user?.id || user.role !== 'client') return;
@@ -1059,6 +1059,8 @@ function AppContent() {
       onViewChange={setView}
       cartCount={cart.reduce((a, b) => a + b.quantity, 0)}
       onCartClick={() => setIsCartOpen(true)}
+      showCartHint={showCartHint}
+      onCartHintDismiss={() => setShowCartHint(false)}
       orderCount={activeOrders.length}
     >
       <AnimatePresence mode="wait">
@@ -1524,6 +1526,7 @@ function AppContent() {
                             for (let i = 0; i < modalQuantity; i++) {
                               addToCart(selectedId, selectedName, selectedPrice);
                             }
+                            if (modalQuantity > 0) setShowCartHint(true);
                             setSelectedMenuItem(null);
                             setSelectedDrinkSize(null);
                             setModalQuantity(0);
