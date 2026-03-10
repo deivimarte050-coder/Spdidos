@@ -259,8 +259,8 @@ const TrackingView: React.FC<{
   orders: Order[];
   deliveryLocation: { lat: number; lng: number } | null;
   onBack: () => void;
-  onCancelPreparing?: (order: Order) => void;
-}> = ({ orderId, orders, deliveryLocation, onBack, onCancelPreparing }) => {
+  onCancelOrder?: (order: Order) => void;
+}> = ({ orderId, orders, deliveryLocation, onBack, onCancelOrder }) => {
   const order = orderId ? orders.find(o => o.id === orderId) || orders[0] : orders[0];
   const stepIndex = order ? ORDER_STEPS.findIndex(s => s.status === order.status) : 0;
   const deliverPos: [number, number] = deliveryLocation ? [deliveryLocation.lat, deliveryLocation.lng] : SPM_CENTER;
@@ -327,18 +327,18 @@ const TrackingView: React.FC<{
   }, [order?.id, order?.status, deliveryLocation?.lat, deliveryLocation?.lng]);
 
   useEffect(() => {
-    if (order?.status !== 'preparing') {
+    if (!order || ['delivered', 'cancelled'].includes(order.status)) {
       setCancelSecsLeft(null);
       return;
     }
 
-    const startMs = new Date((order.preparingAt || order.createdAt) as string).getTime();
+    const startMs = new Date(order.createdAt as string).getTime();
     if (!Number.isFinite(startMs)) {
       setCancelSecsLeft(null);
       return;
     }
 
-    const limitMs = 3 * 60 * 1000;
+    const limitMs = 5 * 60 * 1000;
     const calc = () => Math.max(0, Math.round((startMs + limitMs - Date.now()) / 1000));
     setCancelSecsLeft(calc());
 
@@ -349,7 +349,7 @@ const TrackingView: React.FC<{
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [order?.id, order?.status, order?.preparingAt, order?.createdAt]);
+  }, [order?.id, order?.status, order?.createdAt]);
 
   const fmtTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -432,9 +432,9 @@ const TrackingView: React.FC<{
         </div>
       )}
 
-      {order?.status === 'preparing' && cancelSecsLeft !== null && (
+      {cancelSecsLeft !== null && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
-          <p className="text-sm font-bold text-red-700">Cancelar pedido (solo en preparación)</p>
+          <p className="text-sm font-bold text-red-700">Cancelar pedido (solo en los primeros 5 minutos)</p>
           {cancelSecsLeft > 0 ? (
             <>
               <p className="text-xs text-red-600 font-semibold">
@@ -442,7 +442,7 @@ const TrackingView: React.FC<{
               </p>
               <button
                 type="button"
-                onClick={() => order && onCancelPreparing?.(order)}
+                onClick={() => order && onCancelOrder?.(order)}
                 className="w-full py-3 rounded-xl bg-red-600 text-white font-black hover:bg-red-700 transition-colors"
               >
                 Cancelar pedido ahora
@@ -450,7 +450,7 @@ const TrackingView: React.FC<{
             </>
           ) : (
             <p className="text-xs text-red-700 font-semibold">
-              La ventana de 3 minutos ya venció. Este pedido no se puede cancelar.
+              La ventana de 5 minutos ya venció. Este pedido no se puede cancelar.
             </p>
           )}
         </div>
@@ -682,6 +682,7 @@ function AppContent() {
   const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [deliveredOrders, setDeliveredOrders] = useState<Order[]>([]);
+  const [cancelledOrders, setCancelledOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
@@ -745,17 +746,25 @@ function AppContent() {
 
     const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
       const active = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
-      const history = orders
+      const deliveredHistory = orders
         .filter(o => o.status === 'delivered')
         .sort((a, b) => {
           const aTime = new Date((a.deliveredAt || a.createdAt) as string).getTime();
           const bTime = new Date((b.deliveredAt || b.createdAt) as string).getTime();
           return bTime - aTime;
         });
+      const cancelledHistory = orders
+        .filter(o => o.status === 'cancelled')
+        .sort((a, b) => {
+          const aTime = new Date((a.cancelledAt || a.createdAt) as string).getTime();
+          const bTime = new Date((b.cancelledAt || b.createdAt) as string).getTime();
+          return bTime - aTime;
+        });
       latestActive = active;
       notify(active);
       setActiveOrders(active);
-      setDeliveredOrders(history);
+      setDeliveredOrders(deliveredHistory);
+      setCancelledOrders(cancelledHistory);
     });
 
     // When screen unlocks / tab becomes visible again, clear 'arrived' IDs so
@@ -1121,24 +1130,24 @@ function AppContent() {
       );
     });
 
-  const PREPARING_CANCEL_WINDOW_MS = 3 * 60 * 1000;
+  const ORDER_CANCEL_WINDOW_MS = 5 * 60 * 1000;
 
-  const getPreparingStartMs = (order: Order): number | null => {
-    const parsed = new Date((order.preparingAt || order.createdAt) as string).getTime();
+  const getOrderCreatedMs = (order: Order): number | null => {
+    const parsed = new Date(order.createdAt as string).getTime();
     return Number.isFinite(parsed) ? parsed : null;
   };
 
-  const canClientCancelPreparingOrder = (order: Order): boolean => {
-    if (order.status !== 'preparing') return false;
-    const preparingStartMs = getPreparingStartMs(order);
-    if (!preparingStartMs) return false;
-    return Date.now() - preparingStartMs <= PREPARING_CANCEL_WINDOW_MS;
+  const canClientCancelOrder = (order: Order): boolean => {
+    if (['delivered', 'cancelled'].includes(order.status)) return false;
+    const createdMs = getOrderCreatedMs(order);
+    if (!createdMs) return false;
+    return Date.now() - createdMs <= ORDER_CANCEL_WINDOW_MS;
   };
 
-  const getPreparingCancelTimeLeftText = (order: Order): string => {
-    const preparingStartMs = getPreparingStartMs(order);
-    if (!preparingStartMs) return '0:00';
-    const leftMs = Math.max(0, PREPARING_CANCEL_WINDOW_MS - (Date.now() - preparingStartMs));
+  const getOrderCancelTimeLeftText = (order: Order): string => {
+    const createdMs = getOrderCreatedMs(order);
+    if (!createdMs) return '0:00';
+    const leftMs = Math.max(0, ORDER_CANCEL_WINDOW_MS - (Date.now() - createdMs));
     const totalSeconds = Math.floor(leftMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -1151,8 +1160,8 @@ function AppContent() {
       alert('No puedes cancelar este pedido.');
       return;
     }
-    if (!canClientCancelPreparingOrder(order)) {
-      alert('Solo puedes cancelar cuando esté en preparación y antes de 3 minutos.');
+    if (!canClientCancelOrder(order)) {
+      alert('Solo puedes cancelar en los primeros 5 minutos después de confirmar el pedido.');
       return;
     }
 
@@ -1160,10 +1169,18 @@ function AppContent() {
     if (!confirmed) return;
 
     const previousActiveOrders = activeOrders;
+    const previousCancelledOrders = cancelledOrders;
     const wasTrackingThisOrder = activeOrderId === order.id;
 
-    // Optimistic UI: remove immediately from client panel
+    // Optimistic UI: mark as cancelled immediately in client panel/history
     setActiveOrders(prev => prev.filter(o => o.id !== order.id));
+    setCancelledOrders(prev => [{
+      ...order,
+      status: 'cancelled',
+      cancelledAt: new Date().toISOString(),
+      cancelledByClient: true,
+      cancellationReason: 'Cancelado por cliente en los primeros 5 minutos'
+    }, ...prev.filter(o => o.id !== order.id)]);
     if (wasTrackingThisOrder) {
       setActiveOrderId(null);
       setDeliveryLocation(null);
@@ -1174,10 +1191,11 @@ function AppContent() {
         status: 'cancelled',
         cancelledAt: new Date().toISOString(),
         cancelledByClient: true,
-        cancellationReason: 'Cancelado por cliente dentro de ventana de 3 minutos en preparación'
+        cancellationReason: 'Cancelado por cliente en los primeros 5 minutos'
       });
     } catch (error) {
       setActiveOrders(previousActiveOrders);
+      setCancelledOrders(previousCancelledOrders);
       if (wasTrackingThisOrder) {
         setActiveOrderId(order.id);
       }
@@ -1781,7 +1799,7 @@ function AppContent() {
               orderId={activeOrderId}
               deliveryLocation={deliveryLocation}
               orders={activeOrders}
-              onCancelPreparing={handleClientCancelOrder}
+              onCancelOrder={handleClientCancelOrder}
               onBack={() => { setView('home'); setActiveOrderId(null); setDeliveryLocation(null); }}
             />
           </motion.div>
@@ -1798,7 +1816,7 @@ function AppContent() {
             <div>
               <h2 className="text-3xl font-black font-display tracking-tight mb-8">Mis Pedidos</h2>
 
-              {activeOrders.length === 0 && deliveredOrders.length === 0 ? (
+              {activeOrders.length === 0 && deliveredOrders.length === 0 && cancelledOrders.length === 0 ? (
                 <div className="text-center py-12">
                   <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-gray-900 mb-2">No tienes pedidos todavía</h3>
@@ -1856,12 +1874,12 @@ function AppContent() {
                                 >
                                   Ver detalles →
                                 </button>
-                                {canClientCancelPreparingOrder(order) && (
+                                {canClientCancelOrder(order) && (
                                   <button
                                     onClick={() => handleClientCancelOrder(order)}
                                     className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
                                   >
-                                    Cancelar pedido (restan {getPreparingCancelTimeLeftText(order)} min)
+                                    Cancelar pedido (restan {getOrderCancelTimeLeftText(order)} min)
                                   </button>
                                 )}
                               </div>
@@ -1928,6 +1946,36 @@ function AppContent() {
                                   <span>RD$ {order.total || 0}</span>
                                 </div>
                               </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {cancelledOrders.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900 mb-3">Pedidos cancelados</h3>
+                      <div className="space-y-4">
+                        {cancelledOrders.map(order => {
+                          const cancelledDate = order.cancelledAt ? new Date(order.cancelledAt) : new Date(order.createdAt);
+                          return (
+                            <div key={order.id} className="bg-red-50 rounded-2xl p-6 border border-red-200">
+                              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                <div>
+                                  <h4 className="font-black text-red-900">Pedido #{order.id.slice(-8)}</h4>
+                                  <p className="text-sm text-red-700">{order.businessName}</p>
+                                </div>
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-200 text-red-800">
+                                  Cancelado
+                                </span>
+                              </div>
+                              <p className="text-sm text-red-700 mb-3">
+                                {order.cancellationReason || 'Cancelado por el cliente'}
+                              </p>
+                              <p className="text-xs text-red-700 font-semibold">
+                                {cancelledDate.toLocaleDateString()} · {cancelledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
                             </div>
                           );
                         })}

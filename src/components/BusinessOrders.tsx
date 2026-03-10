@@ -169,7 +169,7 @@ const BusinessOrders: React.FC = () => {
   };
 
   const filtered = orders.filter(o => {
-    if (filter === 'active') return !['delivered', 'cancelled'].includes(o.status);
+    if (filter === 'active') return o.status !== 'delivered';
     if (filter === 'pending') return o.status === 'pending';
     if (filter === 'preparing') return ['accepted', 'preparing'].includes(o.status);
     if (filter === 'ready') return o.status === 'ready';
@@ -178,7 +178,7 @@ const BusinessOrders: React.FC = () => {
   });
 
   const counts = {
-    active: orders.filter(o => !['delivered', 'cancelled'].includes(o.status)).length,
+    active: orders.filter(o => o.status !== 'delivered').length,
     pending: orders.filter(o => o.status === 'pending').length,
     preparing: orders.filter(o => ['accepted', 'preparing'].includes(o.status)).length,
     ready: orders.filter(o => o.status === 'ready').length,
