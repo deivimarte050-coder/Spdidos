@@ -1428,7 +1428,7 @@ const AdminView: React.FC = () => {
                   )}
 
                   {hasCustomAnnouncementImage && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-black/10 pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-black/10 to-transparent pointer-events-none" />
                   )}
 
                   <motion.div
@@ -1436,8 +1436,10 @@ const AdminView: React.FC = () => {
                     transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
                     className="relative z-10 px-5 py-6 max-w-[60%]"
                   >
-                    <p className="text-white text-base lg:text-lg font-bold leading-tight">{announcementForm.topText || ' '}</p>
-                    <p className="text-white font-black text-4xl leading-none tracking-tight">{announcementForm.highlightText || ' '}</p>
+                    <div className="inline-block rounded-2xl px-3 py-2 bg-black/20 backdrop-blur-[1px]">
+                      <p className="text-white text-base lg:text-lg font-bold leading-tight [text-shadow:0_2px_10px_rgba(0,0,0,0.45)]">{announcementForm.topText || ' '}</p>
+                      <p className="text-white font-black text-4xl leading-none tracking-tight [text-shadow:0_4px_14px_rgba(0,0,0,0.55)]">{announcementForm.highlightText || ' '}</p>
+                    </div>
                     <button className="mt-4 bg-amber-900/80 text-white font-black px-5 py-2 rounded-full text-xs tracking-wide">
                       {announcementForm.ctaText || ' '}
                     </button>

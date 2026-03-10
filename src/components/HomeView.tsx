@@ -82,7 +82,7 @@ const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCat
           )}
 
           {hasCustomAnnouncementImage && (
-            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-black/10 pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-black/10 to-transparent pointer-events-none" />
           )}
 
           {/* Text content */}
@@ -91,13 +91,15 @@ const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCat
             transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
             className="relative z-10 px-6 py-7 lg:px-10 lg:py-10 max-w-[58%]"
           >
-            <p className="text-white text-lg lg:text-2xl font-bold leading-tight">
+            <div className="inline-block rounded-2xl px-3 py-2 bg-black/20 backdrop-blur-[1px]">
+            <p className="text-white text-lg lg:text-2xl font-bold leading-tight [text-shadow:0_2px_10px_rgba(0,0,0,0.45)]">
               {banner.topText}
             </p>
-            <p className="text-white font-black text-5xl lg:text-7xl leading-none tracking-tight">{banner.highlightText}</p>
+            <p className="text-white font-black text-5xl lg:text-7xl leading-none tracking-tight [text-shadow:0_4px_14px_rgba(0,0,0,0.55)]">{banner.highlightText}</p>
+            </div>
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="mt-5 bg-amber-900/80 hover:bg-amber-950 text-white font-black px-7 py-3 rounded-full text-sm lg:text-base tracking-wide transition-colors shadow-lg"
+              className="mt-5 bg-amber-900/75 hover:bg-amber-950 text-white font-black px-7 py-3 rounded-full text-sm lg:text-base tracking-wide transition-colors shadow-lg [text-shadow:0_2px_8px_rgba(0,0,0,0.45)]"
             >
               {banner.ctaText}
             </motion.button>
