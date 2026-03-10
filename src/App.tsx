@@ -759,6 +759,8 @@ function AppContent() {
   const [modalNotes, setModalNotes] = useState('');
   const [modalQuantity, setModalQuantity] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
+  const [transferReceiptImage, setTransferReceiptImage] = useState<string | null>(null);
   const [showCartHint, setShowCartHint] = useState(false);
   const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
@@ -1190,6 +1192,10 @@ function AppContent() {
   const deliveryFee = Number.isFinite(selectedBusinessDeliveryFee) && selectedBusinessDeliveryFee >= 0
     ? selectedBusinessDeliveryFee
     : 50;
+  const selectedBusinessTransferBank = String(selectedBusiness?.transferBankName || '').trim();
+  const selectedBusinessTransferAccount = String(selectedBusiness?.transferAccountNumber || '').trim();
+  const selectedBusinessTransferHolder = String(selectedBusiness?.transferAccountHolder || '').trim();
+  const selectedBusinessHasTransferAccount = !!selectedBusinessTransferBank && !!selectedBusinessTransferAccount && !!selectedBusinessTransferHolder;
   const favoriteBusinessIds = user?.favoriteBusinessIds || [];
   const isCurrentBusinessFavorite = !!selectedBusiness && favoriteBusinessIds.includes(selectedBusiness.id);
   const selectedBusinessMenu = selectedBusiness?.menu || [];
@@ -1328,6 +1334,8 @@ function AppContent() {
 
   const handleBusinessSelect = (business: Business) => {
     setSelectedBusiness(business);
+    setPaymentMethod('cash');
+    setTransferReceiptImage(null);
     setMenuOriginView(view);
     setMenuSearchQuery('');
     setActiveMenuCategory('all');
@@ -1511,6 +1519,17 @@ function AppContent() {
   const handleCheckout = async () => {
     if (!selectedBusiness || !user) return;
 
+    if (paymentMethod === 'transfer') {
+      if (!selectedBusinessHasTransferAccount) {
+        alert('Este negocio no tiene cuentas de transferencia configuradas. Usa efectivo o intenta más tarde.');
+        return;
+      }
+      if (!transferReceiptImage) {
+        alert('Debes subir el comprobante de transferencia antes de confirmar el pedido.');
+        return;
+      }
+    }
+
     if (checkoutLockRef.current) return;
     checkoutLockRef.current = true;
     setIsCheckoutSubmitting(true);
@@ -1551,10 +1570,17 @@ function AppContent() {
         deliveryFee,
         total: cartTotal + deliveryFee,
         status: 'pending',
-        paymentMethod: 'cash',
+        paymentMethod,
         deliveryAddress: '',
         deliveryInstructions: ''
       };
+      if (paymentMethod === 'transfer') {
+        orderData.transferBankName = selectedBusinessTransferBank;
+        orderData.transferAccountNumber = selectedBusinessTransferAccount;
+        orderData.transferAccountHolder = selectedBusinessTransferHolder;
+        orderData.transferReceiptImage = transferReceiptImage;
+        orderData.transferReceiptUploadedAt = new Date().toISOString();
+      }
       orderData.clientLocation = { lat: gps.lat, lng: gps.lng };
       orderData.clientLat = gps.lat;
       orderData.clientLng = gps.lng;
@@ -1565,6 +1591,8 @@ function AppContent() {
       setView('tracking');
       setIsCartOpen(false);
       setCart([]);
+      setPaymentMethod('cash');
+      setTransferReceiptImage(null);
     } catch (err) {
       console.error('Error al crear pedido:', err);
       alert('Error al crear el pedido. Intenta nuevamente.');
@@ -2429,6 +2457,13 @@ function AppContent() {
         onCheckout={handleCheckout}
         isCheckingOut={isCheckoutSubmitting}
         total={cartTotal}
+        paymentMethod={paymentMethod}
+        onPaymentMethodChange={setPaymentMethod}
+        transferBankName={selectedBusinessTransferBank}
+        transferAccountNumber={selectedBusinessTransferAccount}
+        transferAccountHolder={selectedBusinessTransferHolder}
+        transferReceiptImage={transferReceiptImage}
+        onTransferReceiptChange={setTransferReceiptImage}
       />
     </Layout>
     </>

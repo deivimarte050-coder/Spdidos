@@ -9,7 +9,7 @@ import { getFirestore, connectFirestoreEmulator, enableMultiTabIndexedDbPersiste
 const firebaseConfig = {
   projectId: "spdidos-8edda",
   appId: "1:573150906777:web:0ac9b6294842a031736b08",
-  storageBucket: "spdidos-8edda.firebasestorage.app",
+  storageBucket: "spdidos-8edda.appspot.com",
   apiKey: "AIzaSyA0d21nelkgyJ0DGtlEdmzLG6AgMgD8GmE",
   authDomain: "spdidos-8edda.firebaseapp.com",
   messagingSenderId: "573150906777"

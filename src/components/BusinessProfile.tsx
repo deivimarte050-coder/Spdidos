@@ -58,6 +58,9 @@ interface BusinessProfileData {
   openingTime: string;
   closingTime: string;
   weeklySchedule: WeeklyBusinessSchedule;
+  transferBankName: string;
+  transferAccountNumber: string;
+  transferAccountHolder: string;
   image: string;
   isActive: boolean;
   status?: string;
@@ -80,6 +83,9 @@ const BusinessProfile: React.FC = () => {
     openingTime: '08:00',
     closingTime: '22:00',
     weeklySchedule: buildDefaultWeeklySchedule('08:00', '22:00'),
+    transferBankName: '',
+    transferAccountNumber: '',
+    transferAccountHolder: '',
     image: 'https://picsum.photos/seed/restaurant/400/300',
     isActive: true
   });
@@ -136,6 +142,9 @@ const BusinessProfile: React.FC = () => {
                 business.openingTime || '08:00',
                 business.closingTime || '22:00'
               ),
+              transferBankName: String((business as any).transferBankName || ''),
+              transferAccountNumber: String((business as any).transferAccountNumber || ''),
+              transferAccountHolder: String((business as any).transferAccountHolder || ''),
               image: business.image || 'https://picsum.photos/seed/restaurant/400/300',
               isActive: business.status === 'active',
               status: business.status || 'active'
@@ -264,6 +273,9 @@ const BusinessProfile: React.FC = () => {
         openingTime: mondaySchedule.openingTime,
         closingTime: mondaySchedule.closingTime,
         weeklySchedule: profile.weeklySchedule,
+        transferBankName: profile.transferBankName,
+        transferAccountNumber: profile.transferAccountNumber,
+        transferAccountHolder: profile.transferAccountHolder,
         image: safeImage,
         status: profile.isActive ? 'active' : 'inactive'
       };
@@ -580,6 +592,47 @@ const BusinessProfile: React.FC = () => {
                   );
                 })}
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pago por transferencia</label>
+              {isEditing ? (
+                <div className="mt-2 space-y-2">
+                  <input
+                    type="text"
+                    value={profile.transferBankName}
+                    onChange={(e) => setProfile({ ...profile, transferBankName: e.target.value })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    placeholder="Banco"
+                  />
+                  <input
+                    type="text"
+                    value={profile.transferAccountNumber}
+                    onChange={(e) => setProfile({ ...profile, transferAccountNumber: e.target.value })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    placeholder="Número de cuenta"
+                  />
+                  <input
+                    type="text"
+                    value={profile.transferAccountHolder}
+                    onChange={(e) => setProfile({ ...profile, transferAccountHolder: e.target.value })}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    placeholder="Nombre del titular"
+                  />
+                </div>
+              ) : (
+                <div className="mt-1 text-sm text-gray-700 space-y-1">
+                  {profile.transferBankName && profile.transferAccountNumber && profile.transferAccountHolder ? (
+                    <>
+                      <p><span className="font-bold">Banco:</span> {profile.transferBankName}</p>
+                      <p><span className="font-bold">Cuenta:</span> {profile.transferAccountNumber}</p>
+                      <p><span className="font-bold">Titular:</span> {profile.transferAccountHolder}</p>
+                    </>
+                  ) : (
+                    <p className="text-gray-500">No configurado</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

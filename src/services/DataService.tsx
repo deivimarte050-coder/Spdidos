@@ -19,6 +19,9 @@ export interface Business {
   openingTime?: string;
   closingTime?: string;
   weeklySchedule?: Partial<WeeklyBusinessSchedule>;
+  transferBankName?: string;
+  transferAccountNumber?: string;
+  transferAccountHolder?: string;
   menu?: MenuItem[];
 }
 

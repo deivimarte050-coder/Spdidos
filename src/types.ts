@@ -68,6 +68,9 @@ export interface Business {
   createdAt: string;
   totalOrders?: number;
   totalRevenue?: number;
+  transferBankName?: string;
+  transferAccountNumber?: string;
+  transferAccountHolder?: string;
 }
 
 export interface DeliveryPerson {
@@ -138,6 +141,11 @@ export interface Order {
   cancelledAt?: string;
   cancellationReason?: string;
   cancelledByClient?: boolean;
+  transferBankName?: string;
+  transferAccountNumber?: string;
+  transferAccountHolder?: string;
+  transferReceiptImage?: string;
+  transferReceiptUploadedAt?: string;
 }
 
 export interface CartItem {

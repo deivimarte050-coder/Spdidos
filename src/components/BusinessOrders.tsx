@@ -19,6 +19,8 @@ const OrderDetailsModal: React.FC<{ order: Order; onClose: () => void }> = ({ or
   const clientNote = uniqueNotes.length > 0
     ? uniqueNotes.join(' · ')
     : (order.deliveryInstructions || 'Sin nota del cliente');
+  const paymentMethodLabel = String(order.paymentMethod || '').toLowerCase() === 'transfer' ? 'Transferencia' : 'Efectivo';
+  const isTransferPayment = paymentMethodLabel === 'Transferencia';
 
   return (
     <motion.div
@@ -37,6 +39,11 @@ const OrderDetailsModal: React.FC<{ order: Order; onClose: () => void }> = ({ or
         <div className="bg-primary px-6 py-4 text-white">
           <h3 className="text-lg font-black">Detalles del pedido</h3>
           <p className="text-white/85 text-sm">Resumen completo para preparar la orden</p>
+          {isTransferPayment && (
+            <div className="mt-2 inline-flex items-center rounded-xl bg-amber-100 text-amber-800 px-3 py-1 text-xs font-black uppercase tracking-wide">
+              Transferencia pendiente de verificar
+            </div>
+          )}
         </div>
 
         <div className="p-6 space-y-5 overflow-y-auto max-h-[72vh]">
@@ -66,6 +73,27 @@ const OrderDetailsModal: React.FC<{ order: Order; onClose: () => void }> = ({ or
             <p><span className="font-black text-blue-900">Teléfono:</span> <span className="text-blue-900">{order.clientPhone || order.clientWhatsapp || 'No disponible'}</span></p>
             <p><span className="font-black text-blue-900">Dirección exacta:</span> <span className="text-blue-900">{order.deliveryAddress || 'No disponible'}</span></p>
             <p><span className="font-black text-blue-900">Nota del cliente:</span> <span className="text-blue-900">{clientNote}</span></p>
+          </div>
+
+          <div className="bg-violet-50 rounded-2xl p-4 space-y-2 text-sm">
+            <p><span className="font-black text-violet-900">Método de pago:</span> <span className="text-violet-900">{paymentMethodLabel}</span></p>
+            {paymentMethodLabel === 'Transferencia' && (
+              <>
+                <p><span className="font-black text-violet-900">Banco:</span> <span className="text-violet-900">{order.transferBankName || 'No especificado'}</span></p>
+                <p><span className="font-black text-violet-900">Cuenta:</span> <span className="text-violet-900">{order.transferAccountNumber || 'No especificado'}</span></p>
+                <p><span className="font-black text-violet-900">Titular:</span> <span className="text-violet-900">{order.transferAccountHolder || 'No especificado'}</span></p>
+                {order.transferReceiptImage && (
+                  <div className="pt-2">
+                    <p className="text-xs font-black text-violet-700 uppercase mb-2">Comprobante subido por cliente</p>
+                    <img
+                      src={order.transferReceiptImage}
+                      alt="Comprobante de transferencia"
+                      className="w-full max-h-72 object-contain rounded-xl border border-violet-200 bg-white"
+                    />
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -221,6 +249,15 @@ const BusinessOrders: React.FC = () => {
   const [filter, setFilter] = useState<string>('active');
   const [loading, setLoading] = useState(true);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
+
+  const getPaymentMethodLabel = (paymentMethod?: string) => {
+    const method = String(paymentMethod || '').toLowerCase();
+    if (method === 'transfer' || method.includes('transfer')) return 'Transferencia';
+    return 'Efectivo';
+  };
+
+  const isTransferPayment = (paymentMethod?: string) => getPaymentMethodLabel(paymentMethod) === 'Transferencia';
+
   useEffect(() => {
     const businessId = (user as any)?.businessId;
     if (!businessId) { setLoading(false); return; }
@@ -343,9 +380,16 @@ const BusinessOrders: React.FC = () => {
                     <p className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleString('es-DO')}</p>
                   </div>
                 </div>
-                <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase border ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
-                  {STATUS_LABELS[order.status] || order.status}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {isTransferPayment(order.paymentMethod) && (
+                    <span className="px-3 py-1 rounded-xl text-xs font-black uppercase border bg-amber-100 text-amber-700 border-amber-200">
+                      Transferencia pendiente de verificar
+                    </span>
+                  )}
+                  <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase border ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                    {STATUS_LABELS[order.status] || order.status}
+                  </span>
+                </div>
               </div>
 
               {/* Cliente */}
@@ -392,6 +436,33 @@ const BusinessOrders: React.FC = () => {
                   <span className="text-gray-700">Total del pedido</span>
                   <span className="text-lg text-emerald-600">RD$ {order.total?.toFixed(0)}</span>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-violet-100 bg-violet-50 p-3 text-sm space-y-1">
+                <p><span className="font-black text-violet-900">Pago:</span> <span className="text-violet-900">{getPaymentMethodLabel(order.paymentMethod)}</span></p>
+                {getPaymentMethodLabel(order.paymentMethod) === 'Transferencia' && (
+                  <>
+                    <p><span className="font-black text-violet-900">Banco:</span> <span className="text-violet-900">{order.transferBankName || 'No especificado'}</span></p>
+                    <p><span className="font-black text-violet-900">Cuenta:</span> <span className="text-violet-900">{order.transferAccountNumber || 'No especificado'}</span></p>
+                    {order.transferReceiptImage && (
+                      <div className="pt-2 space-y-2">
+                        <p className="text-xs font-black text-violet-700 uppercase">Comprobante</p>
+                        <img
+                          src={order.transferReceiptImage}
+                          alt="Comprobante de transferencia"
+                          className="w-full max-h-48 object-contain rounded-xl border border-violet-200 bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setDetailsOrder(order)}
+                          className="text-xs font-black text-violet-700 underline"
+                        >
+                          Ver en grande
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Acciones */}

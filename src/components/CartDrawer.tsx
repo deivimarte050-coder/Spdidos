@@ -13,6 +13,13 @@ interface CartDrawerProps {
   onCheckout: () => void;
   isCheckingOut?: boolean;
   total?: number;
+  paymentMethod: 'cash' | 'transfer';
+  onPaymentMethodChange: (method: 'cash' | 'transfer') => void;
+  transferBankName?: string;
+  transferAccountNumber?: string;
+  transferAccountHolder?: string;
+  transferReceiptImage?: string | null;
+  onTransferReceiptChange: (imageBase64: string | null) => void;
 }
 
 const CartDrawer: React.FC<CartDrawerProps> = ({ 
@@ -24,12 +31,94 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   onRemove, 
   onCheckout,
   isCheckingOut = false,
-  total
+  total,
+  paymentMethod,
+  onPaymentMethodChange,
+  transferBankName,
+  transferAccountNumber,
+  transferAccountHolder,
+  transferReceiptImage,
+  onTransferReceiptChange,
 }) => {
   const subtotal = typeof total === 'number'
     ? total
     : items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const finalTotal = subtotal + deliveryFee;
+  const transferAccountReady = !!transferBankName && !!transferAccountNumber && !!transferAccountHolder;
+
+  const loadImageFromDataUrl = (dataUrl: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      img.src = dataUrl;
+    });
+
+  const compressTransferReceipt = async (dataUrl: string): Promise<string> => {
+    if (dataUrl.length <= 900000) return dataUrl;
+
+    const image = await loadImageFromDataUrl(dataUrl);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('No se pudo procesar la imagen');
+
+    const maxWidth = 1280;
+    const scale = Math.min(1, maxWidth / image.width);
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    let quality = 0.82;
+    let compressed = canvas.toDataURL('image/jpeg', quality);
+
+    while (compressed.length > 900000 && quality > 0.42) {
+      quality -= 0.08;
+      compressed = canvas.toDataURL('image/jpeg', quality);
+    }
+
+    if (compressed.length > 900000) {
+      let width = canvas.width;
+      let height = canvas.height;
+      while (compressed.length > 900000 && width > 420 && height > 420) {
+        width = Math.round(width * 0.85);
+        height = Math.round(height * 0.85);
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(image, 0, 0, width, height);
+        compressed = canvas.toDataURL('image/jpeg', Math.max(quality, 0.4));
+      }
+    }
+
+    if (compressed.length > 1000000) {
+      throw new Error('La imagen es muy grande. Usa una captura más liviana.');
+    }
+
+    return compressed;
+  };
+
+  const handleTransferReceiptUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = typeof reader.result === 'string' ? reader.result : '';
+      if (!base64) {
+        alert('No se pudo leer la captura. Intenta de nuevo.');
+        return;
+      }
+      try {
+        const optimized = await compressTransferReceipt(base64);
+        onTransferReceiptChange(optimized);
+      } catch (error: any) {
+        alert(error?.message || 'No se pudo procesar la captura. Intenta con una imagen más liviana.');
+      }
+    };
+    reader.onerror = () => {
+      alert('No se pudo leer la captura. Intenta de nuevo.');
+    };
+    reader.readAsDataURL(file);
+  };
 
   return (
     <AnimatePresence>
@@ -113,6 +202,79 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
 
             {items.length > 0 && (
               <div className="p-6 bg-gray-50 border-t border-gray-100 space-y-4">
+                <div className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
+                  <p className="text-sm font-black text-gray-900">Método de pago</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onPaymentMethodChange('cash')}
+                      className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                        paymentMethod === 'cash'
+                          ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      Efectivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onPaymentMethodChange('transfer')}
+                      className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                        paymentMethod === 'transfer'
+                          ? 'bg-blue-100 text-blue-700 border-blue-200'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      Transferencia
+                    </button>
+                  </div>
+
+                  {paymentMethod === 'transfer' && (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm">
+                        <p className="text-xs font-black text-blue-700 uppercase mb-2">Cuentas del negocio</p>
+                        {transferAccountReady ? (
+                          <div className="space-y-1.5 text-blue-900">
+                            <p><span className="font-black">Número de cuenta:</span> {transferAccountNumber}</p>
+                            <p><span className="font-black">Banco:</span> {transferBankName}</p>
+                            <p><span className="font-black">Titular:</span> {transferAccountHolder}</p>
+                          </div>
+                        ) : (
+                          <p className="text-blue-700 font-medium">Este negocio aún no ha configurado sus datos de transferencia.</p>
+                        )}
+                      </div>
+
+                      <p className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                        Para usar transferencia debes realizarla antes de confirmar el pedido y subir el comprobante.
+                      </p>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-black text-gray-600 uppercase">Comprobante de transferencia</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleTransferReceiptUpload}
+                          className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-xs file:font-bold file:text-white hover:file:bg-primary/90"
+                        />
+                        {transferReceiptImage && (
+                          <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-100">
+                            <img src={transferReceiptImage} alt="Comprobante de transferencia" className="w-full h-40 object-cover" />
+                          </div>
+                        )}
+                        {transferReceiptImage && (
+                          <button
+                            type="button"
+                            onClick={() => onTransferReceiptChange(null)}
+                            className="text-xs font-bold text-red-600 hover:text-red-700"
+                          >
+                            Eliminar comprobante
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm text-gray-500">
                     <span>Subtotal</span>
@@ -129,9 +291,9 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                 </div>
                 <button 
                   onClick={onCheckout}
-                  disabled={isCheckingOut}
+                  disabled={isCheckingOut || (paymentMethod === 'transfer' && (!transferAccountReady || !transferReceiptImage))}
                   className={`w-full py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl transition-all ${
-                    isCheckingOut
+                    isCheckingOut || (paymentMethod === 'transfer' && (!transferAccountReady || !transferReceiptImage))
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
                       : 'bg-primary text-white shadow-primary/20 hover:scale-[1.02] active:scale-[0.98]'
                   }`}

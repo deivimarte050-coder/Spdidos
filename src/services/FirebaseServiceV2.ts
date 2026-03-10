@@ -14,7 +14,8 @@ import {
   DocumentData,
   setDoc
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { getDownloadURL, ref, uploadString } from 'firebase/storage';
+import { db, storage } from '../firebase/config';
 import { User, Order } from '../types';
 
 export interface HomeAnnouncement {
@@ -204,6 +205,19 @@ class FirebaseServiceV2 {
       return { id: docRef.id, ...orderData };
     } catch (error: any) {
       console.error('❌ [FirebaseV2] Error agregando pedido:', error);
+      throw error;
+    }
+  }
+
+  async uploadTransferReceiptDataUrl(dataUrl: string, clientId: string): Promise<string> {
+    try {
+      const safeClientId = String(clientId || 'anonymous').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filePath = `orders/transfer-receipts/${safeClientId}/${Date.now()}.jpg`;
+      const storageRef = ref(storage, filePath);
+      await uploadString(storageRef, dataUrl, 'data_url');
+      return await getDownloadURL(storageRef);
+    } catch (error: any) {
+      console.error('❌ [FirebaseV2] Error subiendo comprobante de transferencia:', error);
       throw error;
     }
   }
