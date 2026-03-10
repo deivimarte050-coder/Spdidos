@@ -130,6 +130,10 @@ export interface Order {
     timestamp?: number;
     location?: [number, number];
   };
+  preparingAt?: string;
+  deliveredAt?: string;
+  deliveryDurationMinutes?: number;
+  cancelledAt?: string;
 }
 
 export interface CartItem {

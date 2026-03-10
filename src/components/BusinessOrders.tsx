@@ -158,7 +158,11 @@ const BusinessOrders: React.FC = () => {
 
   const handleUpdateStatus = async (orderId: string, status: string) => {
     try {
-      await FirebaseServiceV2.updateOrder(orderId, { status });
+      const payload: Record<string, any> = { status };
+      if (status === 'preparing') {
+        payload.preparingAt = new Date().toISOString();
+      }
+      await FirebaseServiceV2.updateOrder(orderId, payload);
     } catch (err) {
       console.error('Error actualizando estado:', err);
     }

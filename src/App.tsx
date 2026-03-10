@@ -65,6 +65,56 @@ const SplashScreen: React.FC = () => (
   </motion.div>
 );
 
+// ─── Business cancel notification modal (client cancelled) ───────────────────
+const CancelledOrderModal: React.FC<{
+  order: Order;
+  onClose: () => void;
+}> = ({ order, onClose }) => (
+  <motion.div
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+  >
+    <motion.div
+      initial={{ scale: 0.8, y: 40 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.8, y: 40 }}
+      className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
+    >
+      <div className="bg-red-500 p-6 text-center relative overflow-hidden">
+        <motion.div
+          animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 1 }}
+          className="w-16 h-16 bg-white/30 rounded-full flex items-center justify-center mx-auto mb-3"
+        >
+          <Bell className="w-9 h-9 text-white" />
+        </motion.div>
+        <p className="text-white font-black text-xl">Pedido Cancelado</p>
+        <div className="flex items-center justify-center gap-1.5 mt-1">
+          <Volume2 className="w-4 h-4 text-white/80" />
+          <p className="text-white/90 text-sm font-bold">Sonando...</p>
+        </div>
+      </div>
+      <div className="p-5 space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-bold text-gray-400 uppercase">Pedido #{order.id.slice(-6).toUpperCase()}</span>
+          <span className="text-lg font-black text-red-600">RD$ {order.total?.toFixed(0)}</span>
+        </div>
+        <p className="text-sm font-bold text-gray-800">Lo siento, el cliente {order.clientName} canceló el pedido.</p>
+        {order.deliveryAddress && (
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-gray-400" />
+            <span className="text-sm text-gray-600">{order.deliveryAddress}</span>
+          </div>
+        )}
+      </div>
+      <div className="px-5 pb-6">
+        <button onClick={onClose}
+          className="w-full py-4 bg-red-500 text-white rounded-2xl font-black text-base hover:bg-red-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-200">
+          <X className="w-5 h-5" /> Entendido
+        </button>
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
 // ─── Client arrival notification modal ────────────────────────────────────────
 const ArrivalNotificationModal: React.FC<{ onConfirm: () => void }> = ({ onConfirm }) => (
   <motion.div
@@ -209,13 +259,15 @@ const TrackingView: React.FC<{
   orders: Order[];
   deliveryLocation: { lat: number; lng: number } | null;
   onBack: () => void;
-}> = ({ orderId, orders, deliveryLocation, onBack }) => {
+  onCancelPreparing?: (order: Order) => void;
+}> = ({ orderId, orders, deliveryLocation, onBack, onCancelPreparing }) => {
   const order = orderId ? orders.find(o => o.id === orderId) || orders[0] : orders[0];
   const stepIndex = order ? ORDER_STEPS.findIndex(s => s.status === order.status) : 0;
   const deliverPos: [number, number] = deliveryLocation ? [deliveryLocation.lat, deliveryLocation.lng] : SPM_CENTER;
 
   const [secsLeft, setSecsLeft] = useState<number | null>(null);
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [cancelSecsLeft, setCancelSecsLeft] = useState<number | null>(null);
 
   // Extract client GPS from order (handles both object {lat,lng} and tuple [lat,lng] formats)
   const getClientCoords = (): { lat: number; lng: number } | null => {
@@ -273,6 +325,31 @@ const TrackingView: React.FC<{
       return () => clearInterval(interval);
     }
   }, [order?.id, order?.status, deliveryLocation?.lat, deliveryLocation?.lng]);
+
+  useEffect(() => {
+    if (order?.status !== 'preparing') {
+      setCancelSecsLeft(null);
+      return;
+    }
+
+    const startMs = new Date((order.preparingAt || order.createdAt) as string).getTime();
+    if (!Number.isFinite(startMs)) {
+      setCancelSecsLeft(null);
+      return;
+    }
+
+    const limitMs = 3 * 60 * 1000;
+    const calc = () => Math.max(0, Math.round((startMs + limitMs - Date.now()) / 1000));
+    setCancelSecsLeft(calc());
+
+    const interval = setInterval(() => {
+      const left = calc();
+      setCancelSecsLeft(left);
+      if (left <= 0) clearInterval(interval);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [order?.id, order?.status, order?.preparingAt, order?.createdAt]);
 
   const fmtTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -352,6 +429,30 @@ const TrackingView: React.FC<{
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {order?.status === 'preparing' && cancelSecsLeft !== null && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+          <p className="text-sm font-bold text-red-700">Cancelar pedido (solo en preparación)</p>
+          {cancelSecsLeft > 0 ? (
+            <>
+              <p className="text-xs text-red-600 font-semibold">
+                Tienes {fmtTime(cancelSecsLeft)} para cancelar este pedido.
+              </p>
+              <button
+                type="button"
+                onClick={() => order && onCancelPreparing?.(order)}
+                className="w-full py-3 rounded-xl bg-red-600 text-white font-black hover:bg-red-700 transition-colors"
+              >
+                Cancelar pedido ahora
+              </button>
+            </>
+          ) : (
+            <p className="text-xs text-red-700 font-semibold">
+              La ventana de 3 minutos ya venció. Este pedido no se puede cancelar.
+            </p>
+          )}
         </div>
       )}
 
@@ -580,6 +681,7 @@ function AppContent() {
   const [showCartHint, setShowCartHint] = useState(false);
   const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [deliveredOrders, setDeliveredOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
@@ -592,8 +694,11 @@ function AppContent() {
 
   // ── Business global notification (fires from any tab) ───────────────────────
   const [incomingOrder, setIncomingOrder] = useState<Order | null>(null);
+  const [cancelledOrderNotice, setCancelledOrderNotice] = useState<Order | null>(null);
   const bizNotifiedIds  = useRef<Set<string>>(new Set());
+  const bizCancelledNotifiedIds = useRef<Set<string>>(new Set());
   const bizShowingModal = useRef(false);
+  const bizCancelledInited = useRef(false);
 
   // ── Delivery global notification (fires from any tab) ────────────────────────
   const deliveryKnownReadyIds  = useRef<Set<string>>(new Set());
@@ -640,9 +745,17 @@ function AppContent() {
 
     const unsub = FirebaseServiceV2.subscribeToClientOrders(user.id, (orders) => {
       const active = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
+      const history = orders
+        .filter(o => o.status === 'delivered')
+        .sort((a, b) => {
+          const aTime = new Date((a.deliveredAt || a.createdAt) as string).getTime();
+          const bTime = new Date((b.deliveredAt || b.createdAt) as string).getTime();
+          return bTime - aTime;
+        });
       latestActive = active;
       notify(active);
       setActiveOrders(active);
+      setDeliveredOrders(history);
     });
 
     // When screen unlocks / tab becomes visible again, clear 'arrived' IDs so
@@ -681,9 +794,37 @@ function AppContent() {
           showPushNotification('¡Nuevo Pedido! 🔔', `${pending.clientName} — RD$ ${pending.total?.toFixed(0)}`, 'new-order');
         }
       }
+
+      const cancelledByClient = data.filter((o) => {
+        if (o.status !== 'cancelled') return false;
+        const reason = String((o as any).cancellationReason || '').toLowerCase();
+        return reason.includes('cliente');
+      });
+
+      if (!bizCancelledInited.current) {
+        cancelledByClient.forEach((o) => bizCancelledNotifiedIds.current.add(o.id));
+        bizCancelledInited.current = true;
+      } else {
+        const newlyCancelled = cancelledByClient.find((o) => !bizCancelledNotifiedIds.current.has(o.id));
+        if (newlyCancelled) {
+          bizCancelledNotifiedIds.current.add(newlyCancelled.id);
+          setCancelledOrderNotice(newlyCancelled);
+          soundService.startRinging();
+          showPushNotification(
+            'Pedido cancelado por cliente ❌',
+            `Lo siento, el cliente ${newlyCancelled.clientName} canceló el pedido`,
+            'order-cancelled'
+          );
+        }
+      }
     });
     return () => { unsub(); soundService.stopRinging(); };
   }, [user?.role, (user as any)?.businessId]);
+
+  const handleDismissCancelledBusiness = () => {
+    soundService.stopRinging();
+    setCancelledOrderNotice(null);
+  };
 
   const handleAcceptBusiness = async () => {
     if (!incomingOrder) return;
@@ -979,6 +1120,60 @@ function AppContent() {
       );
     });
 
+  const PREPARING_CANCEL_WINDOW_MS = 3 * 60 * 1000;
+
+  const getPreparingStartMs = (order: Order): number | null => {
+    const parsed = new Date((order.preparingAt || order.createdAt) as string).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const canClientCancelPreparingOrder = (order: Order): boolean => {
+    if (order.status !== 'preparing') return false;
+    const preparingStartMs = getPreparingStartMs(order);
+    if (!preparingStartMs) return false;
+    return Date.now() - preparingStartMs <= PREPARING_CANCEL_WINDOW_MS;
+  };
+
+  const getPreparingCancelTimeLeftText = (order: Order): string => {
+    const preparingStartMs = getPreparingStartMs(order);
+    if (!preparingStartMs) return '0:00';
+    const leftMs = Math.max(0, PREPARING_CANCEL_WINDOW_MS - (Date.now() - preparingStartMs));
+    const totalSeconds = Math.floor(leftMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const handleClientCancelOrder = async (order: Order) => {
+    if (!user) return;
+    if (order.clientId !== user.id) {
+      alert('No puedes cancelar este pedido.');
+      return;
+    }
+    if (!canClientCancelPreparingOrder(order)) {
+      alert('Solo puedes cancelar cuando esté en preparación y antes de 3 minutos.');
+      return;
+    }
+
+    const confirmed = window.confirm('¿Seguro que deseas cancelar este pedido?');
+    if (!confirmed) return;
+
+    try {
+      await FirebaseServiceV2.updateOrder(order.id, {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        cancellationReason: 'Cancelado por cliente dentro de ventana de 3 minutos en preparación'
+      });
+      if (activeOrderId === order.id) {
+        setActiveOrderId(null);
+        setDeliveryLocation(null);
+      }
+    } catch (error) {
+      console.error('Error cancelando pedido por cliente:', error);
+      alert('No se pudo cancelar el pedido. Intenta nuevamente.');
+    }
+  };
+
   const handleCheckout = async () => {
     if (!selectedBusiness || !user) return;
 
@@ -1044,6 +1239,12 @@ function AppContent() {
   if (user.role === 'business') return (
     <>
       <AnimatePresence>
+        {cancelledOrderNotice && (
+          <CancelledOrderModal
+            order={cancelledOrderNotice}
+            onClose={handleDismissCancelledBusiness}
+          />
+        )}
         {incomingOrder && (
           <IncomingOrderModal
             order={incomingOrder}
@@ -1568,6 +1769,7 @@ function AppContent() {
               orderId={activeOrderId}
               deliveryLocation={deliveryLocation}
               orders={activeOrders}
+              onCancelPreparing={handleClientCancelOrder}
               onBack={() => { setView('home'); setActiveOrderId(null); setDeliveryLocation(null); }}
             />
           </motion.div>
@@ -1583,63 +1785,143 @@ function AppContent() {
           >
             <div>
               <h2 className="text-3xl font-black font-display tracking-tight mb-8">Mis Pedidos</h2>
-              
-              {activeOrders.length === 0 ? (
+
+              {activeOrders.length === 0 && deliveredOrders.length === 0 ? (
                 <div className="text-center py-12">
                   <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">No tienes pedidos activos</h3>
-                  <p className="text-gray-400">Tu historial de pedidos aparecerá aquí</p>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">No tienes pedidos todavía</h3>
+                  <p className="text-gray-400">Cuando hagas pedidos, verás activos e historial aquí</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {activeOrders.map(order => (
-                    <div key={order.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h3 className="font-bold text-lg">Pedido #{order.id.slice(-8)}</h3>
-                          <p className="text-sm text-gray-400">{new Date(order.createdAt).toLocaleDateString()}</p>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          order.status === 'pending'    ? 'bg-yellow-100 text-yellow-700' :
-                          order.status === 'accepted'   ? 'bg-cyan-100 text-cyan-700' :
-                          order.status === 'preparing'  ? 'bg-amber-100 text-amber-700' :
-                          order.status === 'ready'      ? 'bg-purple-100 text-purple-700' :
-                          order.status === 'on_the_way' ? 'bg-blue-100 text-blue-700' :
-                          order.status === 'arrived'    ? 'bg-teal-100 text-teal-700' :
-                          order.status === 'delivered'  ? 'bg-green-100 text-green-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {order.status === 'pending'    ? 'Pedido recibido' :
-                           order.status === 'accepted'   ? 'Aceptado' :
-                           order.status === 'preparing'  ? 'Preparando' :
-                           order.status === 'ready'      ? 'Listo para envío' :
-                           order.status === 'on_the_way' ? 'En camino 🛵' :
-                           order.status === 'arrived'    ? '¡Repartidor llegó!' :
-                           order.status === 'delivered'  ? 'Entregado ✓' :
-                           order.status}
-                        </span>
-                      </div>
-                      
-                      <div className="space-y-2 mb-4">
-                        {order.items?.map(item => (
-                          <div key={item.id} className="flex justify-between text-sm">
-                            <span>{item.quantity}x {item.name}</span>
-                            <span>RD$ {item.price * item.quantity}</span>
+                <div className="space-y-8">
+                  {activeOrders.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900 mb-3">Pedidos activos</h3>
+                      <div className="space-y-4">
+                        {activeOrders.map(order => (
+                          <div key={order.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h3 className="font-bold text-lg">Pedido #{order.id.slice(-8)}</h3>
+                                <p className="text-sm text-gray-400">{new Date(order.createdAt).toLocaleDateString()}</p>
+                              </div>
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                order.status === 'pending'    ? 'bg-yellow-100 text-yellow-700' :
+                                order.status === 'accepted'   ? 'bg-cyan-100 text-cyan-700' :
+                                order.status === 'preparing'  ? 'bg-amber-100 text-amber-700' :
+                                order.status === 'ready'      ? 'bg-purple-100 text-purple-700' :
+                                order.status === 'on_the_way' ? 'bg-blue-100 text-blue-700' :
+                                order.status === 'arrived'    ? 'bg-teal-100 text-teal-700' :
+                                order.status === 'delivered'  ? 'bg-green-100 text-green-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {order.status === 'pending'    ? 'Pedido recibido' :
+                                 order.status === 'accepted'   ? 'Aceptado' :
+                                 order.status === 'preparing'  ? 'Preparando' :
+                                 order.status === 'ready'      ? 'Listo para envío' :
+                                 order.status === 'on_the_way' ? 'En camino 🛵' :
+                                 order.status === 'arrived'    ? '¡Repartidor llegó!' :
+                                 order.status === 'delivered'  ? 'Entregado ✓' :
+                                 order.status}
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 mb-4">
+                              {order.items?.map(item => (
+                                <div key={item.id} className="flex justify-between text-sm">
+                                  <span>{item.quantity}x {item.name}</span>
+                                  <span>RD$ {item.price * item.quantity}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="pt-4 border-t flex justify-between items-center gap-3">
+                              <span className="font-bold text-lg">RD$ {order.total}</span>
+                              <div className="flex flex-col items-end gap-2">
+                                <button
+                                  onClick={() => setView('tracking')}
+                                  className="text-primary font-medium hover:text-primary/80 transition-colors"
+                                >
+                                  Ver detalles →
+                                </button>
+                                {canClientCancelPreparingOrder(order) && (
+                                  <button
+                                    onClick={() => handleClientCancelOrder(order)}
+                                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                  >
+                                    Cancelar pedido (restan {getPreparingCancelTimeLeftText(order)} min)
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
-                      
-                      <div className="pt-4 border-t flex justify-between items-center">
-                        <span className="font-bold text-lg">RD$ {order.total}</span>
-                        <button 
-                          onClick={() => setView('tracking')}
-                          className="text-primary font-medium hover:text-primary/80 transition-colors"
-                        >
-                          Ver detalles →
-                        </button>
+                    </div>
+                  )}
+
+                  {deliveredOrders.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900 mb-3">Historial (facturas entregadas)</h3>
+                      <div className="space-y-4">
+                        {deliveredOrders.map(order => {
+                          const deliveredDate = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.createdAt);
+                          return (
+                            <div key={order.id} className="bg-emerald-50 rounded-2xl p-6 border border-emerald-200">
+                              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                <div>
+                                  <h4 className="font-black text-emerald-900">Factura #{order.id.slice(-8)}</h4>
+                                  <p className="text-sm text-emerald-700">{order.businessName}</p>
+                                </div>
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-200 text-emerald-800">
+                                  Entregado ✓
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
+                                <div className="bg-white/80 rounded-xl p-3 border border-emerald-100">
+                                  <p className="text-emerald-700 font-semibold">Fecha</p>
+                                  <p className="font-bold text-emerald-900">{deliveredDate.toLocaleDateString()}</p>
+                                </div>
+                                <div className="bg-white/80 rounded-xl p-3 border border-emerald-100">
+                                  <p className="text-emerald-700 font-semibold">Hora</p>
+                                  <p className="font-bold text-emerald-900">{deliveredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                </div>
+                                <div className="bg-white/80 rounded-xl p-3 border border-emerald-100">
+                                  <p className="text-emerald-700 font-semibold">Duración entrega</p>
+                                  <p className="font-bold text-emerald-900">{order.deliveryDurationMinutes ? `${order.deliveryDurationMinutes} min` : 'No disponible'}</p>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2 mb-4">
+                                {order.items?.map(item => (
+                                  <div key={item.id} className="flex justify-between text-sm text-emerald-900">
+                                    <span>{item.quantity}x {item.name}</span>
+                                    <span>RD$ {(item.price || 0) * (item.quantity || 0)}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="pt-4 border-t border-emerald-200 space-y-1 text-sm">
+                                <div className="flex justify-between text-emerald-800">
+                                  <span>Subtotal artículos</span>
+                                  <span>RD$ {order.subtotal || 0}</span>
+                                </div>
+                                <div className="flex justify-between text-emerald-800">
+                                  <span>Delivery</span>
+                                  <span>RD$ {order.deliveryFee || 0}</span>
+                                </div>
+                                <div className="flex justify-between text-lg font-black text-emerald-900 pt-1">
+                                  <span>Total pagado</span>
+                                  <span>RD$ {order.total || 0}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
