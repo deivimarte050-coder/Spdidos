@@ -143,6 +143,7 @@ export interface CartItem {
   name: string;
   price: number;
   quantity: number;
+  notes?: string;
 }
 
 export type View = 'home' | 'restaurants' | 'restaurant' | 'tracking' | 'orders' | 'profile' | 'addresses' | 'favorites' | 'history' | 'settings' | 'business';

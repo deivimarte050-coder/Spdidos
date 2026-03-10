@@ -297,9 +297,14 @@ const BusinessOrders: React.FC = () => {
               {/* Items */}
               <div className="space-y-1">
                 {order.items?.map(item => (
-                  <div key={item.id} className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
-                    <span className="text-sm text-gray-700"><span className="font-bold">{item.quantity}x</span> {item.name}</span>
-                    <span className="text-sm font-bold text-gray-900">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+                  <div key={`${item.id}-${item.notes || 'sin-nota'}`} className="py-1.5 border-b border-gray-50 last:border-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700"><span className="font-bold">{item.quantity}x</span> {item.name}</span>
+                      <span className="text-sm font-bold text-gray-900">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+                    </div>
+                    {item.notes && (
+                      <p className="text-xs text-gray-500 mt-1">Nota del cliente: {item.notes}</p>
+                    )}
                   </div>
                 ))}
                 <div className="flex justify-between pt-2 font-bold">

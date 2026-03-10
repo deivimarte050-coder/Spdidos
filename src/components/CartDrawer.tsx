@@ -8,7 +8,7 @@ interface CartDrawerProps {
   onClose: () => void;
   items: CartItem[];
   onAdd: (item: any) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string, notes?: string) => void;
   onCheckout: () => void;
   isCheckingOut?: boolean;
 }
@@ -76,14 +76,17 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                 </div>
               ) : (
                 items.map((item) => (
-                  <div key={item.id} className="flex items-center gap-4 group">
+                  <div key={`${item.id}-${item.notes || 'sin-nota'}`} className="flex items-center gap-4 group">
                     <div className="flex-1">
                       <h4 className="font-bold text-gray-900 leading-tight">{item.name}</h4>
+                      {item.notes && (
+                        <p className="text-xs text-gray-500 mt-1">Nota: {item.notes}</p>
+                      )}
                       <p className="text-sm text-primary font-black mt-1">RD$ {item.price}</p>
                     </div>
                     <div className="flex items-center gap-3 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
                       <button 
-                        onClick={() => onRemove(item.id)}
+                        onClick={() => onRemove(item.id, item.notes)}
                         className="p-1.5 hover:bg-white rounded-lg text-gray-400 hover:text-red-500 transition-all shadow-sm"
                       >
                         {item.quantity === 1 ? <Trash2 className="w-4 h-4" /> : <Minus className="w-4 h-4" />}

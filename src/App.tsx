@@ -676,6 +676,7 @@ function AppContent() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
   const [selectedDrinkSize, setSelectedDrinkSize] = useState<string | null>(null);
+  const [modalNotes, setModalNotes] = useState('');
   const [modalQuantity, setModalQuantity] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showCartHint, setShowCartHint] = useState(false);
@@ -925,23 +926,33 @@ function AppContent() {
     return <Auth />;
   }
 
-  const addToCart = (id: string, name: string, price: number) => {
+  const addToCart = (id: string, name: string, price: number, notes?: string) => {
+    const normalizedNotes = (notes || '').trim();
     setCart(prev => {
-      const existing = prev.find(i => i.id === id);
+      const existing = prev.find(i => i.id === id && (i.notes || '') === normalizedNotes);
       if (existing) {
-        return prev.map(i => i.id === id ? { ...i, quantity: i.quantity + 1 } : i);
+        return prev.map(i => (
+          i.id === id && (i.notes || '') === normalizedNotes
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        ));
       }
-      return [...prev, { id, name, price, quantity: 1 }];
+      return [...prev, { id, name, price, quantity: 1, notes: normalizedNotes || undefined }];
     });
   };
 
-  const removeFromCart = (id: string) => {
+  const removeFromCart = (id: string, notes?: string) => {
+    const normalizedNotes = (notes || '').trim();
     setCart(prev => {
-      const existing = prev.find(i => i.id === id);
+      const existing = prev.find(i => i.id === id && (i.notes || '') === normalizedNotes);
       if (existing && existing.quantity > 1) {
-        return prev.map(i => i.id === id ? { ...i, quantity: i.quantity - 1 } : i);
+        return prev.map(i => (
+          i.id === id && (i.notes || '') === normalizedNotes
+            ? { ...i, quantity: i.quantity - 1 }
+            : i
+        ));
       }
-      return prev.filter(i => i.id !== id);
+      return prev.filter(i => !(i.id === id && (i.notes || '') === normalizedNotes));
     });
   };
 
@@ -1236,7 +1247,13 @@ function AppContent() {
         businessName: selectedBusiness.name,
         businessEmail: selectedBusiness.email || '',
         businessPhone: selectedBusiness.phone || '',
-        items: cart.map(item => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })),
+        items: cart.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          notes: item.notes || ''
+        })),
         subtotal: cartTotal,
         deliveryFee: 50,
         total: cartTotal + 50,
@@ -1659,6 +1676,7 @@ function AppContent() {
                     onClick={() => {
                       setSelectedMenuItem(null);
                       setSelectedDrinkSize(null);
+                      setModalNotes('');
                     }}
                   >
                     <motion.div
@@ -1680,6 +1698,7 @@ function AppContent() {
                           onClick={() => {
                             setSelectedMenuItem(null);
                             setSelectedDrinkSize(null);
+                            setModalNotes('');
                           }}
                           className="absolute top-4 left-4 w-10 h-10 rounded-full bg-white/90 text-gray-700 flex items-center justify-center"
                         >
@@ -1733,7 +1752,18 @@ function AppContent() {
                           <div className="flex items-center justify-between">
                             <p className="text-2xl font-black text-gray-900">Preferencias</p>
                           </div>
-                          <p className="text-gray-500 mt-1">Elige hasta 3 opciones</p>
+                          <p className="text-gray-500 mt-1">Agrega una nota con tu petición para este artículo</p>
+                          <div className="mt-3">
+                            <label className="text-sm font-bold text-gray-700">Notas</label>
+                            <textarea
+                              value={modalNotes}
+                              onChange={(e) => setModalNotes(e.target.value)}
+                              placeholder="Ej: sin cebolla, salsa aparte, bien cocido..."
+                              maxLength={240}
+                              className="mt-2 w-full min-h-[90px] rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">{modalNotes.length}/240</p>
+                          </div>
                         </div>
                       </div>
 
@@ -1765,11 +1795,12 @@ function AppContent() {
                               ? `${selectedMenuItem.id}-${activeDrinkSize}`
                               : selectedMenuItem.id;
                             for (let i = 0; i < modalQuantity; i++) {
-                              addToCart(selectedId, selectedName, selectedPrice);
+                              addToCart(selectedId, selectedName, selectedPrice, modalNotes);
                             }
                             if (modalQuantity > 0) setShowCartHint(true);
                             setSelectedMenuItem(null);
                             setSelectedDrinkSize(null);
+                            setModalNotes('');
                             setModalQuantity(0);
                           }}
                           className="w-full py-4 rounded-2xl bg-primary text-white font-black text-lg"
@@ -2056,6 +2087,7 @@ function AppContent() {
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         items={cart}
+        onAdd={(item) => addToCart(item.id, item.name, item.price, item.notes)}
         onRemove={removeFromCart}
         onCheckout={handleCheckout}
         isCheckingOut={isCheckoutSubmitting}
