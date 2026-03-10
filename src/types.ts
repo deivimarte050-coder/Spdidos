@@ -49,6 +49,12 @@ export interface Restaurant {
   menu?: MenuItem[];
 }
 
+export interface TransferBankAccount {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+}
+
 export interface Business {
   id: string;
   name: string;
@@ -68,6 +74,7 @@ export interface Business {
   createdAt: string;
   totalOrders?: number;
   totalRevenue?: number;
+  transferBankAccounts?: TransferBankAccount[];
   transferBankName?: string;
   transferAccountNumber?: string;
   transferAccountHolder?: string;

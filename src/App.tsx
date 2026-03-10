@@ -760,6 +760,7 @@ function AppContent() {
   const [modalQuantity, setModalQuantity] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
+  const [selectedTransferAccountIndex, setSelectedTransferAccountIndex] = useState(0);
   const [transferReceiptImage, setTransferReceiptImage] = useState<string | null>(null);
   const [showCartHint, setShowCartHint] = useState(false);
   const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
@@ -1192,10 +1193,31 @@ function AppContent() {
   const deliveryFee = Number.isFinite(selectedBusinessDeliveryFee) && selectedBusinessDeliveryFee >= 0
     ? selectedBusinessDeliveryFee
     : 50;
-  const selectedBusinessTransferBank = String(selectedBusiness?.transferBankName || '').trim();
-  const selectedBusinessTransferAccount = String(selectedBusiness?.transferAccountNumber || '').trim();
-  const selectedBusinessTransferHolder = String(selectedBusiness?.transferAccountHolder || '').trim();
-  const selectedBusinessHasTransferAccount = !!selectedBusinessTransferBank && !!selectedBusinessTransferAccount && !!selectedBusinessTransferHolder;
+  const selectedBusinessTransferAccounts = (() => {
+    const rawAccounts = Array.isArray((selectedBusiness as any)?.transferBankAccounts)
+      ? ((selectedBusiness as any).transferBankAccounts as any[])
+      : [];
+    const normalized = rawAccounts
+      .map((account) => ({
+        bankName: String(account?.bankName || '').trim(),
+        accountNumber: String(account?.accountNumber || '').trim(),
+        accountHolder: String(account?.accountHolder || '').trim(),
+      }))
+      .filter((account) => account.bankName && account.accountNumber && account.accountHolder);
+
+    if (normalized.length > 0) return normalized;
+
+    const legacyBank = String(selectedBusiness?.transferBankName || '').trim();
+    const legacyNumber = String(selectedBusiness?.transferAccountNumber || '').trim();
+    const legacyHolder = String(selectedBusiness?.transferAccountHolder || '').trim();
+    if (legacyBank && legacyNumber && legacyHolder) {
+      return [{ bankName: legacyBank, accountNumber: legacyNumber, accountHolder: legacyHolder }];
+    }
+    return [] as Array<{ bankName: string; accountNumber: string; accountHolder: string }>;
+  })();
+  const safeTransferAccountIndex = selectedBusinessTransferAccounts[selectedTransferAccountIndex] ? selectedTransferAccountIndex : 0;
+  const selectedTransferAccount = selectedBusinessTransferAccounts[safeTransferAccountIndex] || null;
+  const selectedBusinessHasTransferAccount = !!selectedTransferAccount;
   const favoriteBusinessIds = user?.favoriteBusinessIds || [];
   const isCurrentBusinessFavorite = !!selectedBusiness && favoriteBusinessIds.includes(selectedBusiness.id);
   const selectedBusinessMenu = selectedBusiness?.menu || [];
@@ -1335,6 +1357,7 @@ function AppContent() {
   const handleBusinessSelect = (business: Business) => {
     setSelectedBusiness(business);
     setPaymentMethod('cash');
+    setSelectedTransferAccountIndex(0);
     setTransferReceiptImage(null);
     setMenuOriginView(view);
     setMenuSearchQuery('');
@@ -1575,9 +1598,9 @@ function AppContent() {
         deliveryInstructions: ''
       };
       if (paymentMethod === 'transfer') {
-        orderData.transferBankName = selectedBusinessTransferBank;
-        orderData.transferAccountNumber = selectedBusinessTransferAccount;
-        orderData.transferAccountHolder = selectedBusinessTransferHolder;
+        orderData.transferBankName = selectedTransferAccount?.bankName || '';
+        orderData.transferAccountNumber = selectedTransferAccount?.accountNumber || '';
+        orderData.transferAccountHolder = selectedTransferAccount?.accountHolder || '';
         orderData.transferReceiptImage = transferReceiptImage;
         orderData.transferReceiptUploadedAt = new Date().toISOString();
       }
@@ -1592,6 +1615,7 @@ function AppContent() {
       setIsCartOpen(false);
       setCart([]);
       setPaymentMethod('cash');
+      setSelectedTransferAccountIndex(0);
       setTransferReceiptImage(null);
     } catch (err) {
       console.error('Error al crear pedido:', err);
@@ -2459,9 +2483,9 @@ function AppContent() {
         total={cartTotal}
         paymentMethod={paymentMethod}
         onPaymentMethodChange={setPaymentMethod}
-        transferBankName={selectedBusinessTransferBank}
-        transferAccountNumber={selectedBusinessTransferAccount}
-        transferAccountHolder={selectedBusinessTransferHolder}
+        transferBankAccounts={selectedBusinessTransferAccounts}
+        selectedTransferAccountIndex={safeTransferAccountIndex}
+        onTransferAccountChange={setSelectedTransferAccountIndex}
         transferReceiptImage={transferReceiptImage}
         onTransferReceiptChange={setTransferReceiptImage}
       />

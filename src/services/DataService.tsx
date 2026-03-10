@@ -1,4 +1,4 @@
-import { User, UserRole, WeeklyBusinessSchedule } from '../types';
+import { User, UserRole, WeeklyBusinessSchedule, TransferBankAccount } from '../types';
 
 // Interfaces para los datos
 export interface Business {
@@ -19,6 +19,7 @@ export interface Business {
   openingTime?: string;
   closingTime?: string;
   weeklySchedule?: Partial<WeeklyBusinessSchedule>;
+  transferBankAccounts?: TransferBankAccount[];
   transferBankName?: string;
   transferAccountNumber?: string;
   transferAccountHolder?: string;

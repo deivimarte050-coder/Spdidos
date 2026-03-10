@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShoppingBag, Plus, Minus, Trash2, Bike } from 'lucide-react';
-import { CartItem } from '../types';
+import { X, ShoppingBag, Plus, Minus, Trash2, Bike, Copy } from 'lucide-react';
+import { CartItem, TransferBankAccount } from '../types';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -15,9 +15,9 @@ interface CartDrawerProps {
   total?: number;
   paymentMethod: 'cash' | 'transfer';
   onPaymentMethodChange: (method: 'cash' | 'transfer') => void;
-  transferBankName?: string;
-  transferAccountNumber?: string;
-  transferAccountHolder?: string;
+  transferBankAccounts: TransferBankAccount[];
+  selectedTransferAccountIndex: number;
+  onTransferAccountChange: (index: number) => void;
   transferReceiptImage?: string | null;
   onTransferReceiptChange: (imageBase64: string | null) => void;
 }
@@ -34,9 +34,9 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   total,
   paymentMethod,
   onPaymentMethodChange,
-  transferBankName,
-  transferAccountNumber,
-  transferAccountHolder,
+  transferBankAccounts,
+  selectedTransferAccountIndex,
+  onTransferAccountChange,
   transferReceiptImage,
   onTransferReceiptChange,
 }) => {
@@ -44,7 +44,31 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
     ? total
     : items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const finalTotal = subtotal + deliveryFee;
-  const transferAccountReady = !!transferBankName && !!transferAccountNumber && !!transferAccountHolder;
+  const selectedTransferAccount = transferBankAccounts[selectedTransferAccountIndex] || null;
+  const transferAccountReady = !!selectedTransferAccount?.bankName && !!selectedTransferAccount?.accountNumber && !!selectedTransferAccount?.accountHolder;
+
+  const handleCopyAccountNumber = async (accountNumber: string) => {
+    const value = String(accountNumber || '').trim();
+    if (!value) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      alert('Número de cuenta copiado');
+    } catch {
+      alert('No se pudo copiar automáticamente. Copia el número manualmente.');
+    }
+  };
 
   const loadImageFromDataUrl = (dataUrl: string): Promise<HTMLImageElement> =>
     new Promise((resolve, reject) => {
@@ -233,11 +257,35 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                     <div className="space-y-3">
                       <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm">
                         <p className="text-xs font-black text-blue-700 uppercase mb-2">Cuentas del negocio</p>
-                        {transferAccountReady ? (
-                          <div className="space-y-1.5 text-blue-900">
-                            <p><span className="font-black">Número de cuenta:</span> {transferAccountNumber}</p>
-                            <p><span className="font-black">Banco:</span> {transferBankName}</p>
-                            <p><span className="font-black">Titular:</span> {transferAccountHolder}</p>
+                        {transferBankAccounts.length > 0 ? (
+                          <div className="space-y-2">
+                            {transferBankAccounts.map((account, index) => {
+                              const isSelected = index === selectedTransferAccountIndex;
+                              return (
+                                <div
+                                  key={`${account.bankName}-${account.accountNumber}-${index}`}
+                                  className={`rounded-xl border p-3 ${isSelected ? 'border-blue-300 bg-white' : 'border-blue-100 bg-blue-50/60'}`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => onTransferAccountChange(index)}
+                                    className="w-full text-left"
+                                  >
+                                    <p className="text-xs font-black text-blue-700 uppercase mb-1">Banco {index + 1}</p>
+                                    <p className="text-blue-900"><span className="font-black">Banco:</span> {account.bankName}</p>
+                                    <p className="text-blue-900"><span className="font-black">Titular:</span> {account.accountHolder}</p>
+                                    <p className="text-blue-900"><span className="font-black">Número:</span> {account.accountNumber}</p>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyAccountNumber(account.accountNumber)}
+                                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-100"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" /> Copiar número de cuenta
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <p className="text-blue-700 font-medium">Este negocio aún no ha configurado sus datos de transferencia.</p>

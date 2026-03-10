@@ -4,7 +4,7 @@ import { Camera, MapPin, Clock, Star, Edit2, Save, X, Upload, Plus, Trash2 } fro
 import { useAuth } from '../contexts/AuthContext';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import EventService from '../services/EventService';
-import { BusinessDayKey, WeeklyBusinessSchedule } from '../types';
+import { BusinessDayKey, WeeklyBusinessSchedule, TransferBankAccount } from '../types';
 
 const DAY_ORDER: { key: BusinessDayKey; label: string }[] = [
   { key: 'monday', label: 'Lunes' },
@@ -45,6 +45,16 @@ const mergeWeeklySchedule = (
   }, { ...base });
 };
 
+const normalizeTransferBankAccounts = (accounts: any[]): TransferBankAccount[] => (
+  (accounts || [])
+    .map((account) => ({
+      bankName: String(account?.bankName || '').trim(),
+      accountNumber: String(account?.accountNumber || '').trim(),
+      accountHolder: String(account?.accountHolder || '').trim(),
+    }))
+    .filter((account) => account.bankName && account.accountNumber && account.accountHolder)
+);
+
 interface BusinessProfileData {
   id?: string;
   name: string;
@@ -58,9 +68,7 @@ interface BusinessProfileData {
   openingTime: string;
   closingTime: string;
   weeklySchedule: WeeklyBusinessSchedule;
-  transferBankName: string;
-  transferAccountNumber: string;
-  transferAccountHolder: string;
+  transferBankAccounts: TransferBankAccount[];
   image: string;
   isActive: boolean;
   status?: string;
@@ -83,9 +91,7 @@ const BusinessProfile: React.FC = () => {
     openingTime: '08:00',
     closingTime: '22:00',
     weeklySchedule: buildDefaultWeeklySchedule('08:00', '22:00'),
-    transferBankName: '',
-    transferAccountNumber: '',
-    transferAccountHolder: '',
+    transferBankAccounts: [{ bankName: '', accountNumber: '', accountHolder: '' }],
     image: 'https://picsum.photos/seed/restaurant/400/300',
     isActive: true
   });
@@ -142,9 +148,21 @@ const BusinessProfile: React.FC = () => {
                 business.openingTime || '08:00',
                 business.closingTime || '22:00'
               ),
-              transferBankName: String((business as any).transferBankName || ''),
-              transferAccountNumber: String((business as any).transferAccountNumber || ''),
-              transferAccountHolder: String((business as any).transferAccountHolder || ''),
+              transferBankAccounts: (() => {
+                const configuredAccounts = normalizeTransferBankAccounts((business as any).transferBankAccounts || []);
+                if (configuredAccounts.length > 0) return configuredAccounts;
+                const legacyBankName = String((business as any).transferBankName || '').trim();
+                const legacyAccountNumber = String((business as any).transferAccountNumber || '').trim();
+                const legacyAccountHolder = String((business as any).transferAccountHolder || '').trim();
+                if (legacyBankName && legacyAccountNumber && legacyAccountHolder) {
+                  return [{
+                    bankName: legacyBankName,
+                    accountNumber: legacyAccountNumber,
+                    accountHolder: legacyAccountHolder,
+                  }];
+                }
+                return [{ bankName: '', accountNumber: '', accountHolder: '' }];
+              })(),
               image: business.image || 'https://picsum.photos/seed/restaurant/400/300',
               isActive: business.status === 'active',
               status: business.status || 'active'
@@ -211,6 +229,37 @@ const BusinessProfile: React.FC = () => {
     }));
   };
 
+  const updateTransferBankAccount = (index: number, patch: Partial<TransferBankAccount>) => {
+    setProfile((prev) => ({
+      ...prev,
+      transferBankAccounts: prev.transferBankAccounts.map((account, accountIndex) => (
+        accountIndex === index
+          ? { ...account, ...patch }
+          : account
+      )),
+    }));
+  };
+
+  const addTransferBankAccount = () => {
+    setProfile((prev) => ({
+      ...prev,
+      transferBankAccounts: [
+        ...prev.transferBankAccounts,
+        { bankName: '', accountNumber: '', accountHolder: '' },
+      ],
+    }));
+  };
+
+  const removeTransferBankAccount = (index: number) => {
+    setProfile((prev) => {
+      const next = prev.transferBankAccounts.filter((_, accountIndex) => accountIndex !== index);
+      return {
+        ...prev,
+        transferBankAccounts: next.length > 0 ? next : [{ bankName: '', accountNumber: '', accountHolder: '' }],
+      };
+    });
+  };
+
   const applyDefaultHoursToAllDays = () => {
     setProfile((prev) => ({
       ...prev,
@@ -260,6 +309,8 @@ const BusinessProfile: React.FC = () => {
     try {
       const safeImage = await getSafeImage(profile.image);
       const mondaySchedule = profile.weeklySchedule.monday;
+      const normalizedAccounts = normalizeTransferBankAccounts(profile.transferBankAccounts);
+      const primaryTransferAccount = normalizedAccounts[0] || null;
       const updateData = {
         name: profile.name,
         description: profile.description,
@@ -273,9 +324,10 @@ const BusinessProfile: React.FC = () => {
         openingTime: mondaySchedule.openingTime,
         closingTime: mondaySchedule.closingTime,
         weeklySchedule: profile.weeklySchedule,
-        transferBankName: profile.transferBankName,
-        transferAccountNumber: profile.transferAccountNumber,
-        transferAccountHolder: profile.transferAccountHolder,
+        transferBankAccounts: normalizedAccounts,
+        transferBankName: primaryTransferAccount?.bankName || '',
+        transferAccountNumber: primaryTransferAccount?.accountNumber || '',
+        transferAccountHolder: primaryTransferAccount?.accountHolder || '',
         image: safeImage,
         status: profile.isActive ? 'active' : 'inactive'
       };
@@ -598,36 +650,59 @@ const BusinessProfile: React.FC = () => {
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pago por transferencia</label>
               {isEditing ? (
                 <div className="mt-2 space-y-2">
-                  <input
-                    type="text"
-                    value={profile.transferBankName}
-                    onChange={(e) => setProfile({ ...profile, transferBankName: e.target.value })}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="Banco"
-                  />
-                  <input
-                    type="text"
-                    value={profile.transferAccountNumber}
-                    onChange={(e) => setProfile({ ...profile, transferAccountNumber: e.target.value })}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="Número de cuenta"
-                  />
-                  <input
-                    type="text"
-                    value={profile.transferAccountHolder}
-                    onChange={(e) => setProfile({ ...profile, transferAccountHolder: e.target.value })}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="Nombre del titular"
-                  />
+                  {profile.transferBankAccounts.map((account, index) => (
+                    <div key={`transfer-account-${index}`} className="border border-gray-200 rounded-xl p-3 bg-gray-50 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-black text-gray-600 uppercase">Banco #{index + 1}</p>
+                        <button
+                          type="button"
+                          onClick={() => removeTransferBankAccount(index)}
+                          className="text-xs font-black text-red-600 hover:text-red-700"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={account.bankName}
+                        onChange={(e) => updateTransferBankAccount(index, { bankName: e.target.value })}
+                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        placeholder="Banco"
+                      />
+                      <input
+                        type="text"
+                        value={account.accountNumber}
+                        onChange={(e) => updateTransferBankAccount(index, { accountNumber: e.target.value })}
+                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        placeholder="Número de cuenta"
+                      />
+                      <input
+                        type="text"
+                        value={account.accountHolder}
+                        onChange={(e) => updateTransferBankAccount(index, { accountHolder: e.target.value })}
+                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        placeholder="Nombre del titular"
+                      />
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addTransferBankAccount}
+                    className="w-full py-2.5 rounded-xl border border-dashed border-primary text-primary font-bold text-sm hover:bg-primary/5"
+                  >
+                    + Agregar otro banco
+                  </button>
                 </div>
               ) : (
                 <div className="mt-1 text-sm text-gray-700 space-y-1">
-                  {profile.transferBankName && profile.transferAccountNumber && profile.transferAccountHolder ? (
-                    <>
-                      <p><span className="font-bold">Banco:</span> {profile.transferBankName}</p>
-                      <p><span className="font-bold">Cuenta:</span> {profile.transferAccountNumber}</p>
-                      <p><span className="font-bold">Titular:</span> {profile.transferAccountHolder}</p>
-                    </>
+                  {normalizeTransferBankAccounts(profile.transferBankAccounts).length > 0 ? (
+                    normalizeTransferBankAccounts(profile.transferBankAccounts).map((account, index) => (
+                      <div key={`transfer-account-view-${index}`} className="rounded-xl border border-gray-200 p-3 space-y-1 bg-gray-50">
+                        <p><span className="font-bold">Banco:</span> {account.bankName}</p>
+                        <p><span className="font-bold">Cuenta:</span> {account.accountNumber}</p>
+                        <p><span className="font-bold">Titular:</span> {account.accountHolder}</p>
+                      </div>
+                    ))
                   ) : (
                     <p className="text-gray-500">No configurado</p>
                   )}
