@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Clock, Star, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, Clock, Star, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid, Share2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import Layout from './components/Layout';
@@ -768,6 +768,8 @@ function AppContent() {
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
   const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
+  const [pendingSharedTarget, setPendingSharedTarget] = useState<{ businessId: string; itemId?: string; imageUrl?: string } | null>(null);
+  const sharedAuthNoticeShownRef = useRef(false);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const checkoutLockRef = useRef(false);
@@ -807,6 +809,37 @@ function AppContent() {
       setHomeAnnouncement(announcement);
     });
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const readPending = () => {
+      try {
+        const saved = localStorage.getItem('pending_shared_target');
+        if (!saved) return null;
+        const parsed = JSON.parse(saved) as { businessId?: string; itemId?: string; imageUrl?: string };
+        if (!parsed?.businessId) return null;
+        return { businessId: parsed.businessId, itemId: parsed.itemId, imageUrl: parsed.imageUrl };
+      } catch {
+        return null;
+      }
+    };
+
+    const params = new URLSearchParams(window.location.search);
+    const shareType = params.get('share');
+    const businessId = params.get('business');
+    if (shareType && businessId) {
+      const nextTarget = {
+        businessId,
+        itemId: params.get('item') || undefined,
+        imageUrl: params.get('img') || undefined,
+      };
+      setPendingSharedTarget(nextTarget);
+      localStorage.setItem('pending_shared_target', JSON.stringify(nextTarget));
+      return;
+    }
+
+    const pending = readPending();
+    if (pending) setPendingSharedTarget(pending);
   }, []);
 
   useEffect(() => {
@@ -996,6 +1029,43 @@ function AppContent() {
 
     loadBusinesses();
   }, []);
+
+  useEffect(() => {
+    if (!pendingSharedTarget) return;
+
+    if (!user || user.role !== 'client') {
+      if (!sharedAuthNoticeShownRef.current) {
+        sharedAuthNoticeShownRef.current = true;
+        alert('Para pedir este artículo debes iniciar sesión o registrarte como cliente.');
+      }
+      return;
+    }
+
+    const business = allBusinesses.find((b) => b.id === pendingSharedTarget.businessId);
+    if (!business) return;
+
+    setSelectedBusiness(business);
+    setMenuOriginView('home');
+    setMenuSearchQuery('');
+    setActiveMenuCategory('all');
+    setView('menu');
+
+    if (pendingSharedTarget.itemId) {
+      const targetItem = (business.menu || []).find((item) => item.id === pendingSharedTarget.itemId);
+      if (targetItem) {
+        setSelectedMenuItem(targetItem as MenuItem);
+        setSelectedDrinkSize(null);
+        setModalNotes('');
+        setModalQuantity(1);
+      }
+    }
+
+    localStorage.removeItem('pending_shared_target');
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    setPendingSharedTarget(null);
+  }, [pendingSharedTarget, user, allBusinesses]);
 
   // Keep client GPS updated while order is active (every 30s)
   useEffect(() => {
@@ -1193,6 +1263,62 @@ function AppContent() {
     setActiveMenuCategory('all');
     setSelectedMenuItem(null);
     setView('menu' as any);
+  };
+
+  const buildRestaurantShareLink = (business: Business) => {
+    const base = `${window.location.origin}${window.location.pathname}`;
+    const params = new URLSearchParams({
+      share: 'restaurant',
+      business: business.id,
+      img: business.image || '',
+    });
+    return `${base}?${params.toString()}`;
+  };
+
+  const buildMenuItemShareLink = (business: Business, item: MenuItem) => {
+    const base = `${window.location.origin}${window.location.pathname}`;
+    const params = new URLSearchParams({
+      share: 'item',
+      business: business.id,
+      item: item.id,
+      img: item.image || business.image || '',
+    });
+    return `${base}?${params.toString()}`;
+  };
+
+  const shareLink = async (options: { title: string; text: string; url: string }) => {
+    try {
+      if (navigator.share) {
+        await navigator.share(options);
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(options.url);
+        alert('✅ Link copiado para compartir');
+        return;
+      }
+      prompt('Copia este link para compartir:', options.url);
+    } catch {
+      // Usuario canceló el share nativo
+    }
+  };
+
+  const handleShareBusiness = async (business: Business) => {
+    const url = buildRestaurantShareLink(business);
+    await shareLink({
+      title: `Pide en ${business.name}`,
+      text: `Mira el menú de ${business.name} en Spdidos: ${business.image}`,
+      url,
+    });
+  };
+
+  const handleShareMenuItem = async (business: Business, item: MenuItem) => {
+    const url = buildMenuItemShareLink(business, item);
+    await shareLink({
+      title: `${item.name} · ${business.name}`,
+      text: `Quiero pedir este artículo: ${item.name}. Imagen: ${item.image || business.image || ''}`,
+      url,
+    });
   };
 
   const toggleFavoriteByBusinessId = async (businessId: string) => {
@@ -1575,6 +1701,12 @@ function AppContent() {
                 <ChevronLeft className="w-6 h-6" />
               </button>
               <h2 className="text-3xl font-black font-display tracking-tight">{selectedBusiness.name}</h2>
+              <button
+                onClick={() => handleShareBusiness(selectedBusiness)}
+                className="ml-auto inline-flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 shadow-sm text-sm font-bold text-gray-700"
+              >
+                <Share2 className="w-4 h-4" /> Compartir
+              </button>
             </div>
 
             {/* Perfil del Negocio - Vista Cliente */}
@@ -1734,7 +1866,17 @@ function AppContent() {
                           />
                         </button>
                         <div className="p-3">
-                          <h5 className="font-bold text-gray-900 text-[15px] leading-tight line-clamp-2">{item.name}</h5>
+                          <div className="flex items-start justify-between gap-2">
+                            <h5 className="font-bold text-gray-900 text-[15px] leading-tight line-clamp-2">{item.name}</h5>
+                            <button
+                              type="button"
+                              onClick={() => handleShareMenuItem(selectedBusiness, item as MenuItem)}
+                              className="w-8 h-8 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-50"
+                              title="Compartir artículo"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </button>
+                          </div>
                           <p className="text-sm text-gray-500 mt-1 line-clamp-2 min-h-[2.5rem]">{item.description || 'Sin descripción disponible'}</p>
                           <p className="text-lg font-black text-gray-900 mt-2">RD$ {item.price}</p>
                         </div>
