@@ -134,6 +134,8 @@ export interface Order {
   deliveredAt?: string;
   deliveryDurationMinutes?: number;
   cancelledAt?: string;
+  cancellationReason?: string;
+  cancelledByClient?: boolean;
 }
 
 export interface CartItem {

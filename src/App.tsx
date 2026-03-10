@@ -797,6 +797,7 @@ function AppContent() {
 
       const cancelledByClient = data.filter((o) => {
         if (o.status !== 'cancelled') return false;
+        if ((o as any).cancelledByClient === true) return true;
         const reason = String((o as any).cancellationReason || '').toLowerCase();
         return reason.includes('cliente');
       });
@@ -809,7 +810,7 @@ function AppContent() {
         if (newlyCancelled) {
           bizCancelledNotifiedIds.current.add(newlyCancelled.id);
           setCancelledOrderNotice(newlyCancelled);
-          soundService.startRinging();
+          soundService.startCancelledRinging();
           showPushNotification(
             'Pedido cancelado por cliente ❌',
             `Lo siento, el cliente ${newlyCancelled.clientName} canceló el pedido`,
@@ -1158,17 +1159,28 @@ function AppContent() {
     const confirmed = window.confirm('¿Seguro que deseas cancelar este pedido?');
     if (!confirmed) return;
 
+    const previousActiveOrders = activeOrders;
+    const wasTrackingThisOrder = activeOrderId === order.id;
+
+    // Optimistic UI: remove immediately from client panel
+    setActiveOrders(prev => prev.filter(o => o.id !== order.id));
+    if (wasTrackingThisOrder) {
+      setActiveOrderId(null);
+      setDeliveryLocation(null);
+    }
+
     try {
       await FirebaseServiceV2.updateOrder(order.id, {
         status: 'cancelled',
         cancelledAt: new Date().toISOString(),
+        cancelledByClient: true,
         cancellationReason: 'Cancelado por cliente dentro de ventana de 3 minutos en preparación'
       });
-      if (activeOrderId === order.id) {
-        setActiveOrderId(null);
-        setDeliveryLocation(null);
-      }
     } catch (error) {
+      setActiveOrders(previousActiveOrders);
+      if (wasTrackingThisOrder) {
+        setActiveOrderId(order.id);
+      }
       console.error('Error cancelando pedido por cliente:', error);
       alert('No se pudo cancelar el pedido. Intenta nuevamente.');
     }
