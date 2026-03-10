@@ -146,7 +146,6 @@ class FirebaseServiceV2 {
   async updateBusiness(id: string, businessData: any): Promise<any> {
     try {
       console.log('[FirebaseV2] 📝 Actualizando negocio:', id);
-      const { doc, setDoc } = await import('firebase/firestore');
       const businessRef = doc(db, COLLECTIONS.BUSINESSES, id);
       await setDoc(businessRef, {
         ...businessData,
@@ -163,7 +162,6 @@ class FirebaseServiceV2 {
   async deleteBusiness(id: string): Promise<void> {
     try {
       console.log('[FirebaseV2] 🗑️ Eliminando negocio:', id);
-      const { doc, deleteDoc } = await import('firebase/firestore');
       const businessRef = doc(db, COLLECTIONS.BUSINESSES, id);
       await deleteDoc(businessRef);
       console.log('✅ [FirebaseV2] Negocio eliminado:', id);
