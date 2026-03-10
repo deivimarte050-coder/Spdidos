@@ -108,39 +108,34 @@ const MenuManager: React.FC = () => {
         }
       }
 
-      // Limpiar undefined/null recursivamente para Firestore
-      const clean = (obj: any): any => {
-        if (obj === undefined || obj === null) return null;
-        if (Array.isArray(obj)) return obj.map(clean).filter((v: any) => v !== undefined);
-        if (typeof obj === 'object' && obj !== null) {
-          const out: any = {};
-          for (const [k, v] of Object.entries(obj)) {
-            if (v !== undefined) out[k] = clean(v);
+      const convertedMenu: any[] = [];
+      for (const item of updatedMenu) {
+        const sizes: Array<{size: string; price: number}> = [];
+        if (isDrinkCategory(item.category) && Array.isArray(item.drinkSizes)) {
+          for (const ds of item.drinkSizes) {
+            if (ds && ds.size && String(ds.size).trim()) {
+              sizes.push({ size: String(ds.size).trim().toLowerCase(), price: Number(ds.price) || 0 });
+            }
           }
-          return out;
         }
-        return obj;
-      };
-
-      const convertedMenu = updatedMenu.map(item => clean({
-        id: String(item.id || Date.now()),
-        name: String(item.name || ''),
-        description: String(item.description || ''),
-        price: Number(item.price) || 0,
-        category: String(item.category || ''),
-        image: String(item.image || ''),
-        available: item.isAvailable !== false && item.isActive !== false,
-        drinkSizes: isDrinkCategory(item.category)
-          ? (item.drinkSizes || [])
-              .filter((ds: any) => ds && typeof ds.size === 'string' && ds.size.trim())
-              .map((ds: any) => ({ size: String(ds.size).trim().toLowerCase(), price: Number(ds.price) || 0 }))
-          : []
-      }));
+        convertedMenu.push({
+          id: String(item.id || Date.now()),
+          name: String(item.name || ''),
+          description: String(item.description || ''),
+          price: Number(item.price) || 0,
+          category: String(item.category || ''),
+          image: String(item.image || ''),
+          available: Boolean(item.isAvailable !== false && item.isActive !== false),
+          drinkSizes: sizes
+        });
+      }
+      // JSON roundtrip elimina undefined, functions, y cualquier dato no serializable
+      const safeMenu = JSON.parse(JSON.stringify(convertedMenu));
 
       // Escribir directo a Firestore con updateDoc (solo actualiza el campo menu)
       const businessRef = doc(db, 'businesses', businessIdRef.current);
       await updateDoc(businessRef, {
-        menu: convertedMenu,
+        menu: safeMenu,
         updatedAt: Timestamp.now()
       });
 
