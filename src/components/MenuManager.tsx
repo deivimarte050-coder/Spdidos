@@ -108,15 +108,33 @@ const MenuManager: React.FC = () => {
         }
       }
 
-      const convertedMenu = updatedMenu.map(item => ({
-        id: item.id,
-        name: item.name,
-        description: item.description || '',
+      // Limpiar undefined/null recursivamente para Firestore
+      const clean = (obj: any): any => {
+        if (obj === undefined || obj === null) return null;
+        if (Array.isArray(obj)) return obj.map(clean).filter((v: any) => v !== undefined);
+        if (typeof obj === 'object' && obj !== null) {
+          const out: any = {};
+          for (const [k, v] of Object.entries(obj)) {
+            if (v !== undefined) out[k] = clean(v);
+          }
+          return out;
+        }
+        return obj;
+      };
+
+      const convertedMenu = updatedMenu.map(item => clean({
+        id: String(item.id || Date.now()),
+        name: String(item.name || ''),
+        description: String(item.description || ''),
         price: Number(item.price) || 0,
-        category: item.category || '',
-        image: item.image || '',
+        category: String(item.category || ''),
+        image: String(item.image || ''),
         available: item.isAvailable !== false && item.isActive !== false,
-        drinkSizes: isDrinkCategory(item.category) ? sanitizeDrinkSizes(item.drinkSizes) : []
+        drinkSizes: isDrinkCategory(item.category)
+          ? (item.drinkSizes || [])
+              .filter((ds: any) => ds && typeof ds.size === 'string' && ds.size.trim())
+              .map((ds: any) => ({ size: String(ds.size).trim().toLowerCase(), price: Number(ds.price) || 0 }))
+          : []
       }));
 
       // Escribir directo a Firestore con updateDoc (solo actualiza el campo menu)
