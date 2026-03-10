@@ -1409,7 +1409,7 @@ const AdminView: React.FC = () => {
                   initial={{ opacity: 0.9 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.35 }}
-                  className="relative overflow-hidden rounded-2xl"
+                  className="relative overflow-hidden rounded-2xl h-[170px] sm:h-[190px] lg:h-[240px]"
                   style={hasCustomAnnouncementImage
                     ? { background: '#111827' }
                     : { background: 'linear-gradient(120deg,#ff8c00 0%,#f97316 45%,#ea580c 100%)' }}
@@ -1434,13 +1434,13 @@ const AdminView: React.FC = () => {
                   <motion.div
                     animate={{ y: [0, -3, 0] }}
                     transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-                    className="relative z-10 px-5 py-6 max-w-[60%]"
+                    className="relative z-10 h-full px-5 py-4 max-w-[60%] flex flex-col justify-center"
                   >
-                    <div className="inline-block rounded-2xl px-3 py-2 bg-white/22 border border-white/40 backdrop-blur-[1px]">
-                      <p className="text-white text-base lg:text-lg font-bold leading-tight [text-shadow:0_2px_8px_rgba(0,0,0,0.35)]">{announcementForm.topText || ' '}</p>
-                      <p className="text-white font-black text-4xl leading-none tracking-tight [text-shadow:0_3px_12px_rgba(0,0,0,0.4)]">{announcementForm.highlightText || ' '}</p>
+                    <div className="inline-block max-w-full rounded-2xl px-3 py-2 bg-white/22 border border-white/40 backdrop-blur-[1px] overflow-hidden">
+                      <p className="text-white text-base lg:text-lg font-bold leading-tight [text-shadow:0_2px_8px_rgba(0,0,0,0.35)] whitespace-nowrap overflow-hidden text-ellipsis">{announcementForm.topText || ' '}</p>
+                      <p className="text-white font-black text-3xl sm:text-4xl leading-none tracking-tight [text-shadow:0_3px_12px_rgba(0,0,0,0.4)] whitespace-nowrap overflow-hidden text-ellipsis">{announcementForm.highlightText || ' '}</p>
                     </div>
-                    <button className="mt-4 bg-amber-900/80 text-white font-black px-5 py-2 rounded-full text-xs tracking-wide">
+                    <button className="mt-3 w-fit bg-amber-900/80 text-white font-black px-5 py-2 rounded-full text-xs tracking-wide">
                       {announcementForm.ctaText || ' '}
                     </button>
                   </motion.div>

@@ -44,7 +44,7 @@ const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCat
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-2xl lg:rounded-3xl"
+          className="relative overflow-hidden rounded-2xl lg:rounded-3xl h-[170px] sm:h-[190px] lg:h-[240px]"
           style={hasCustomAnnouncementImage
             ? { background: '#111827' }
             : { background: 'linear-gradient(120deg,#ff8c00 0%,#f97316 45%,#ea580c 100%)' }}
@@ -89,17 +89,17 @@ const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCat
           <motion.div
             animate={{ y: [0, -3, 0] }}
             transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="relative z-10 px-6 py-7 lg:px-10 lg:py-10 max-w-[58%]"
+            className="relative z-10 h-full px-6 py-4 lg:px-10 lg:py-7 max-w-[58%] flex flex-col justify-center"
           >
-            <div className="inline-block rounded-2xl px-3 py-2 bg-white/22 border border-white/40 backdrop-blur-[1px]">
-            <p className="text-white text-lg lg:text-2xl font-bold leading-tight [text-shadow:0_2px_8px_rgba(0,0,0,0.35)]">
+            <div className="inline-block max-w-full rounded-2xl px-3 py-2 bg-white/22 border border-white/40 backdrop-blur-[1px] overflow-hidden">
+            <p className="text-white text-base lg:text-2xl font-bold leading-tight [text-shadow:0_2px_8px_rgba(0,0,0,0.35)] whitespace-nowrap overflow-hidden text-ellipsis">
               {banner.topText}
             </p>
-            <p className="text-white font-black text-5xl lg:text-7xl leading-none tracking-tight [text-shadow:0_3px_12px_rgba(0,0,0,0.4)]">{banner.highlightText}</p>
+            <p className="text-white font-black text-3xl sm:text-4xl lg:text-6xl leading-none tracking-tight [text-shadow:0_3px_12px_rgba(0,0,0,0.4)] whitespace-nowrap overflow-hidden text-ellipsis">{banner.highlightText}</p>
             </div>
             <motion.button
               whileTap={{ scale: 0.95 }}
-              className="mt-5 bg-amber-900/75 hover:bg-amber-950 text-white font-black px-7 py-3 rounded-full text-sm lg:text-base tracking-wide transition-colors shadow-lg [text-shadow:0_2px_8px_rgba(0,0,0,0.45)]"
+              className="mt-3 lg:mt-4 w-fit bg-amber-900/75 hover:bg-amber-950 text-white font-black px-5 lg:px-7 py-2.5 lg:py-3 rounded-full text-xs lg:text-base tracking-wide transition-colors shadow-lg [text-shadow:0_2px_8px_rgba(0,0,0,0.45)]"
             >
               {banner.ctaText}
             </motion.button>
