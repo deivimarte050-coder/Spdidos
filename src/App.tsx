@@ -578,6 +578,7 @@ function AppContent() {
   const [modalQuantity, setModalQuantity] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showCartHint, setShowCartHint] = useState(false);
+  const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -585,6 +586,7 @@ function AppContent() {
   const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const checkoutLockRef = useRef(false);
   // ── Client: notify whenever an order is (or becomes) 'arrived' ─────────────
   const arrivedNotifiedIds = useRef<Set<string>>(new Set());
 
@@ -979,6 +981,11 @@ function AppContent() {
 
   const handleCheckout = async () => {
     if (!selectedBusiness || !user) return;
+
+    if (checkoutLockRef.current) return;
+    checkoutLockRef.current = true;
+    setIsCheckoutSubmitting(true);
+
     try {
       // Capture GPS before saving
       let gps = await getClientGPS();
@@ -1026,6 +1033,9 @@ function AppContent() {
     } catch (err) {
       console.error('Error al crear pedido:', err);
       alert('Error al crear el pedido. Intenta nuevamente.');
+    } finally {
+      checkoutLockRef.current = false;
+      setIsCheckoutSubmitting(false);
     }
   };
 
@@ -1706,6 +1716,7 @@ function AppContent() {
         items={cart}
         onRemove={removeFromCart}
         onCheckout={handleCheckout}
+        isCheckingOut={isCheckoutSubmitting}
         total={cartTotal}
       />
     </Layout>
