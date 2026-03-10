@@ -1591,14 +1591,23 @@ function AppContent() {
                           <p className="text-sm text-gray-400">{new Date(order.createdAt).toLocaleDateString()}</p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                          order.status === 'preparing' ? 'bg-blue-100 text-blue-700' :
-                          order.status === 'ready' ? 'bg-purple-100 text-purple-700' :
-                          'bg-green-100 text-green-700'
+                          order.status === 'pending'    ? 'bg-yellow-100 text-yellow-700' :
+                          order.status === 'accepted'   ? 'bg-cyan-100 text-cyan-700' :
+                          order.status === 'preparing'  ? 'bg-amber-100 text-amber-700' :
+                          order.status === 'ready'      ? 'bg-purple-100 text-purple-700' :
+                          order.status === 'on_the_way' ? 'bg-blue-100 text-blue-700' :
+                          order.status === 'arrived'    ? 'bg-teal-100 text-teal-700' :
+                          order.status === 'delivered'  ? 'bg-green-100 text-green-700' :
+                          'bg-gray-100 text-gray-700'
                         }`}>
-                          {order.status === 'pending' ? 'Pendiente' :
-                           order.status === 'preparing' ? 'Preparando' :
-                           order.status === 'ready' ? 'Listo para recoger' : 'Entregado'}
+                          {order.status === 'pending'    ? 'Pedido recibido' :
+                           order.status === 'accepted'   ? 'Aceptado' :
+                           order.status === 'preparing'  ? 'Preparando' :
+                           order.status === 'ready'      ? 'Listo para envío' :
+                           order.status === 'on_the_way' ? 'En camino 🛵' :
+                           order.status === 'arrived'    ? '¡Repartidor llegó!' :
+                           order.status === 'delivered'  ? 'Entregado ✓' :
+                           order.status}
                         </span>
                       </div>
                       
