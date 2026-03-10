@@ -108,50 +108,41 @@ const MenuManager: React.FC = () => {
         }
       }
 
-      // Construir menú limpio — solo tipos primitivos, sin undefined/null
-      const safeMenu: Record<string, any>[] = updatedMenu.map(item => {
-        const obj: Record<string, any> = {
-          id: String(item.id || Date.now()),
-          name: String(item.name || ''),
-          description: String(item.description || ''),
-          price: Number(item.price) || 0,
-          category: String(item.category || ''),
-          image: String(item.image || ''),
-          available: item.isAvailable !== false && item.isActive !== false ? true : false
-        };
-        // Solo agregar drinkSizes si tiene entradas válidas (evitar arrays vacíos anidados)
-        if (isDrinkCategory(item.category) && Array.isArray(item.drinkSizes) && item.drinkSizes.length > 0) {
-          const validSizes = item.drinkSizes
-            .filter(ds => ds && ds.size && String(ds.size).trim())
-            .map(ds => ({ size: String(ds.size).trim().toLowerCase(), price: Number(ds.price) || 0 }));
-          if (validSizes.length > 0) {
-            obj.drinkSizes = validSizes;
-          }
-        }
-        return obj;
-      });
-
-      // Limpiar con JSON roundtrip para eliminar cualquier tipo no serializable
-      const cleanMenu = JSON.parse(JSON.stringify(safeMenu));
+      // Construir menú limpio con SOLO strings, numbers y booleans
+      const cleanMenu: any[] = [];
+      for (let i = 0; i < updatedMenu.length; i++) {
+        const item = updatedMenu[i];
+        const plain: any = {};
+        plain.id = '' + (item.id || Date.now());
+        plain.name = '' + (item.name || '');
+        plain.description = '' + (item.description || '');
+        plain.price = +(item.price) || 0;
+        plain.category = '' + (item.category || '');
+        plain.image = '' + (item.image || '');
+        plain.available = !!(item.isAvailable !== false && item.isActive !== false);
+        // NO incluir drinkSizes — eliminado temporalmente para diagnosticar
+        cleanMenu.push(plain);
+      }
 
       const businessRef = doc(db, 'businesses', businessIdRef.current);
+
+      // Paso 1: Verificar que Firestore funciona con datos simples
       try {
-        await updateDoc(businessRef, {
-          menu: cleanMenu,
-          updatedAt: Timestamp.now()
-        });
-      } catch (writeErr: any) {
-        // Si falla, intentar sin Timestamp
-        console.error('Intento 1 falló:', writeErr?.message);
+        await updateDoc(businessRef, { _menuTest: 'v8-' + Date.now() });
+      } catch (testErr: any) {
+        throw new Error('PASO1_FALLO: No se puede escribir a Firestore: ' + (testErr?.message || testErr));
+      }
+
+      // Paso 2: Escribir el menú limpio (sin drinkSizes)
+      try {
+        await updateDoc(businessRef, { menu: cleanMenu });
+      } catch (menuErr: any) {
+        // Si falla, intentar con JSON roundtrip
         try {
-          await updateDoc(businessRef, {
-            menu: cleanMenu,
-            updatedAt: new Date().toISOString()
-          });
-        } catch (writeErr2: any) {
-          // Si aún falla, intentar guardando solo el campo menu
-          console.error('Intento 2 falló:', writeErr2?.message);
-          await updateDoc(businessRef, { menu: cleanMenu });
+          const jsonClean = JSON.parse(JSON.stringify(cleanMenu));
+          await updateDoc(businessRef, { menu: jsonClean });
+        } catch (menuErr2: any) {
+          throw new Error('PASO2_FALLO: ' + (menuErr?.message || menuErr) + ' | JSON: ' + (menuErr2?.message || menuErr2));
         }
       }
 
@@ -162,7 +153,7 @@ const MenuManager: React.FC = () => {
       console.error('❌ [MenuManager] Error guardando:', msg);
       setSaveError(msg);
       setSaveStatus('error');
-      alert('Error guardando menú: ' + msg);
+      alert('Error v8: ' + msg);
       setTimeout(() => setSaveStatus('idle'), 5000);
     } finally {
       savingRef.current = false;
