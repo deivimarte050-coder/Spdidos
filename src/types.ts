@@ -130,6 +130,7 @@ export interface Order {
     timestamp?: number;
     location?: [number, number];
   };
+  acceptedAt?: string;
   preparingAt?: string;
   deliveredAt?: string;
   deliveryDurationMinutes?: number;

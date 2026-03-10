@@ -65,6 +65,81 @@ const SplashScreen: React.FC = () => (
   </motion.div>
 );
 
+// ─── Business accepted-order summary modal ────────────────────────────────────
+const AcceptedOrderSummaryModal: React.FC<{
+  order: Order;
+  onClose: () => void;
+}> = ({ order, onClose }) => {
+  const acceptedDate = new Date((order.acceptedAt || new Date().toISOString()) as string);
+  const acceptedTime = acceptedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const noteList = Array.from(new Set((order.items || [])
+    .map((item) => String(item.notes || '').trim())
+    .filter(Boolean)));
+  const mergedClientNote = noteList.length > 0
+    ? noteList.join(' · ')
+    : (order.deliveryInstructions || 'Sin nota del cliente');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+    >
+      <motion.div
+        initial={{ scale: 0.94, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 30 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[92vh] overflow-hidden"
+      >
+        <div className="bg-emerald-500 px-6 py-5 text-white">
+          <h3 className="text-xl font-black">Pedido aceptado ✅</h3>
+          <p className="text-emerald-100 text-sm">Resumen para comenzar de inmediato</p>
+        </div>
+
+        <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
+          <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Número / ID</span><span className="font-black">#{order.id.slice(-8).toUpperCase()}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Hora aceptado</span><span className="font-black">{acceptedTime}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Total</span><span className="font-black text-emerald-700">RD$ {order.total?.toFixed(0)}</span></div>
+          </div>
+
+          <div>
+            <p className="text-sm font-black text-gray-900 mb-2">Productos pedidos</p>
+            <div className="space-y-2">
+              {(order.items || []).map((item) => (
+                <div key={`${item.id}-${item.notes || 'sin-nota'}`} className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-800"><span className="font-black">{item.quantity}x</span> {item.name}</span>
+                    <span className="font-black">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+                  </div>
+                  {item.notes && <p className="text-xs text-gray-500 mt-1">Nota: {item.notes}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-black text-gray-900 mb-2">Datos del cliente</p>
+            <div className="bg-blue-50 rounded-2xl p-4 space-y-2 text-sm">
+              <p><span className="font-black text-blue-900">Nombre:</span> <span className="text-blue-900">{order.clientName || 'No disponible'}</span></p>
+              <p><span className="font-black text-blue-900">Teléfono:</span> <span className="text-blue-900">{order.clientPhone || order.clientWhatsapp || 'No disponible'}</span></p>
+              <p><span className="font-black text-blue-900">Dirección exacta:</span> <span className="text-blue-900">{order.deliveryAddress || 'No disponible'}</span></p>
+              <p><span className="font-black text-blue-900">Nota del cliente:</span> <span className="text-blue-900">{mergedClientNote}</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 pb-6">
+          <button
+            onClick={onClose}
+            className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black hover:bg-emerald-600 transition-all"
+          >
+            Entendido
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 // ─── Business cancel notification modal (client cancelled) ───────────────────
 const CancelledOrderModal: React.FC<{
   order: Order;
@@ -194,9 +269,14 @@ const IncomingOrderModal: React.FC<{
         )}
         <div className="bg-gray-50 rounded-xl p-3 space-y-1">
           {order.items?.map(item => (
-            <div key={item.id} className="flex justify-between text-sm">
-              <span className="text-gray-700"><span className="font-bold">{item.quantity}x</span> {item.name}</span>
-              <span className="font-bold">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+            <div key={`${item.id}-${item.notes || 'sin-nota'}`} className="text-sm border-b border-gray-100 last:border-0 pb-1 last:pb-0">
+              <div className="flex justify-between">
+                <span className="text-gray-700"><span className="font-bold">{item.quantity}x</span> {item.name}</span>
+                <span className="font-bold">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+              </div>
+              {item.notes && (
+                <p className="text-xs text-gray-500 mt-0.5">Nota del cliente: {item.notes}</p>
+              )}
             </div>
           ))}
         </div>
@@ -696,6 +776,7 @@ function AppContent() {
 
   // ── Business global notification (fires from any tab) ───────────────────────
   const [incomingOrder, setIncomingOrder] = useState<Order | null>(null);
+  const [acceptedOrderSummary, setAcceptedOrderSummary] = useState<Order | null>(null);
   const [cancelledOrderNotice, setCancelledOrderNotice] = useState<Order | null>(null);
   const bizNotifiedIds  = useRef<Set<string>>(new Set());
   const bizCancelledNotifiedIds = useRef<Set<string>>(new Set());
@@ -837,13 +918,21 @@ function AppContent() {
     setCancelledOrderNotice(null);
   };
 
+  const handleCloseAcceptedSummary = () => {
+    setAcceptedOrderSummary(null);
+  };
+
   const handleAcceptBusiness = async () => {
     if (!incomingOrder) return;
     soundService.stopRinging();
     bizShowingModal.current = false;
     const order = incomingOrder;
     setIncomingOrder(null);
-    try { await FirebaseServiceV2.updateOrder(order.id, { status: 'accepted' }); }
+    try {
+      const acceptedAt = new Date().toISOString();
+      await FirebaseServiceV2.updateOrder(order.id, { status: 'accepted', acceptedAt });
+      setAcceptedOrderSummary({ ...order, status: 'accepted', acceptedAt });
+    }
     catch (err) { console.error('Error aceptando pedido:', err); }
   };
 
@@ -1286,6 +1375,12 @@ function AppContent() {
   if (user.role === 'business') return (
     <>
       <AnimatePresence>
+        {acceptedOrderSummary && (
+          <AcceptedOrderSummaryModal
+            order={acceptedOrderSummary}
+            onClose={handleCloseAcceptedSummary}
+          />
+        )}
         {cancelledOrderNotice && (
           <CancelledOrderModal
             order={cancelledOrderNotice}
