@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Edit2, Trash2, Upload, Save, X, Eye, EyeOff } from 'lucide-react';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -26,7 +28,9 @@ const MenuManager: React.FC = () => {
   const { user } = useAuth();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveError, setSaveError] = useState('');
   const savingRef = useRef(false);
+  const businessIdRef = useRef<string | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newItem, setNewItem] = useState<Partial<MenuItem>>({
@@ -50,27 +54,28 @@ const MenuManager: React.FC = () => {
   // Cargar menú del negocio actual desde Firebase
   useEffect(() => {
     const loadMenu = async () => {
-      if (savingRef.current) return; // No recargar mientras se guarda
+      if (savingRef.current) return;
       if (user?.role === 'business') {
         try {
-          console.log('🔍 [MenuManager] Cargando menú desde Firebase...');
           const businesses = await FirebaseServiceV2.getBusinesses();
-          if (savingRef.current) return; // Verificar de nuevo por si se inició un save durante el fetch
+          if (savingRef.current) return;
           const business = businesses.find(b => b.email === user.email);
-          if (business && business.menu) {
-            const convertedMenu: MenuItem[] = business.menu.map((item: any) => ({
-              id: item.id,
-              name: item.name,
-              description: item.description || '',
-              price: item.price,
-              category: item.category || 'General',
-              image: item.image || 'https://picsum.photos/seed/default/300/200',
-              isActive: item.available !== false,
-              isAvailable: item.available !== false,
-              drinkSizes: item.drinkSizes || []
-            }));
-            setMenuItems(convertedMenu);
-            console.log(`✅ [MenuManager] ${convertedMenu.length} items cargados`);
+          if (business) {
+            businessIdRef.current = business.id; // Guardar ID para saves futuros
+            if (business.menu) {
+              const convertedMenu: MenuItem[] = business.menu.map((item: any) => ({
+                id: item.id,
+                name: item.name,
+                description: item.description || '',
+                price: item.price,
+                category: item.category || 'General',
+                image: item.image || 'https://picsum.photos/seed/default/300/200',
+                isActive: item.available !== false,
+                isAvailable: item.available !== false,
+                drinkSizes: item.drinkSizes || []
+              }));
+              setMenuItems(convertedMenu);
+            }
           }
         } catch (error) {
           console.error('❌ [MenuManager] Error cargando menú:', error);
@@ -79,54 +84,60 @@ const MenuManager: React.FC = () => {
     };
 
     loadMenu();
-    
-    // Recargar cada 60 segundos (solo si no está guardando)
     const interval = setInterval(loadMenu, 60000);
     return () => clearInterval(interval);
   }, [user]);
 
-  // Guardar menú en Firebase
+  // Guardar menú directo a Firestore (sin pasar por service layer)
   const saveMenuToFirebase = async (updatedMenu: MenuItem[]) => {
-    if (user?.role === 'business') {
-      savingRef.current = true;
-      setSaveStatus('saving');
-      try {
-        console.log('💾 [MenuManager] Guardando menú en Firebase...');
+    if (!user || user.role !== 'business') return;
+
+    savingRef.current = true;
+    setSaveStatus('saving');
+    setSaveError('');
+
+    try {
+      // Si no tenemos el businessId, buscarlo
+      if (!businessIdRef.current) {
         const businesses = await FirebaseServiceV2.getBusinesses();
         const business = businesses.find(b => b.email === user.email);
-        
         if (business) {
-          // Convertir al formato del DataService/Firebase
-          const convertedMenu = updatedMenu.map(item => ({
-            id: item.id,
-            name: item.name,
-            description: item.description,
-            price: item.price,
-            category: item.category,
-            image: item.image,
-            available: item.isAvailable && item.isActive,
-            drinkSizes: isDrinkCategory(item.category) ? sanitizeDrinkSizes(item.drinkSizes) : []
-          }));
-          
-          // Solo actualizar el campo menu, no spread del objeto completo
-          await FirebaseServiceV2.updateBusiness(business.id, {
-            menu: convertedMenu
-          });
-          console.log('✅ [MenuManager] Menú guardado en Firebase');
-          setSaveStatus('saved');
-          setTimeout(() => setSaveStatus('idle'), 2500);
+          businessIdRef.current = business.id;
         } else {
-          console.error('❌ [MenuManager] No se encontró el negocio con email:', user.email);
-          setSaveStatus('error');
-          setTimeout(() => setSaveStatus('idle'), 3000);
+          throw new Error('No se encontró tu negocio (email: ' + user.email + ')');
         }
-      } catch (error) {
-        console.error('❌ [MenuManager] Error guardando menú:', error);
-        setSaveStatus('error');
-        setTimeout(() => setSaveStatus('idle'), 3000);
-      } finally {
-        savingRef.current = false;
       }
+
+      const convertedMenu = updatedMenu.map(item => ({
+        id: item.id,
+        name: item.name,
+        description: item.description || '',
+        price: Number(item.price) || 0,
+        category: item.category || '',
+        image: item.image || '',
+        available: item.isAvailable !== false && item.isActive !== false,
+        drinkSizes: isDrinkCategory(item.category) ? sanitizeDrinkSizes(item.drinkSizes) : []
+      }));
+
+      // Escribir directo a Firestore con updateDoc (solo actualiza el campo menu)
+      const businessRef = doc(db, 'businesses', businessIdRef.current);
+      await updateDoc(businessRef, {
+        menu: convertedMenu,
+        updatedAt: Timestamp.now()
+      });
+
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2500);
+    } catch (error: any) {
+      const msg = error?.message || error?.code || String(error);
+      console.error('❌ [MenuManager] Error guardando:', msg);
+      setSaveError(msg);
+      setSaveStatus('error');
+      // Mostrar alerta en móvil para ver el error exacto
+      alert('Error guardando menú: ' + msg);
+      setTimeout(() => setSaveStatus('idle'), 5000);
+    } finally {
+      savingRef.current = false;
     }
   };
 
@@ -253,7 +264,7 @@ const MenuManager: React.FC = () => {
           <h2 className="text-2xl font-black font-display text-gray-900">Gestión de Menú</h2>
           {saveStatus === 'saving' && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full animate-pulse">Guardando...</span>}
           {saveStatus === 'saved' && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">✓ Guardado</span>}
-          {saveStatus === 'error' && <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">✗ Error al guardar</span>}
+          {saveStatus === 'error' && <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">✗ {saveError || 'Error al guardar'}</span>}
         </div>
         <button
           onClick={() => setIsAddingNew(true)}
