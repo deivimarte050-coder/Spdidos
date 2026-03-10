@@ -769,6 +769,7 @@ function AppContent() {
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
   const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
   const [pendingSharedTarget, setPendingSharedTarget] = useState<{ businessId: string; itemId?: string; imageUrl?: string } | null>(null);
+  const [forceAuthForSharedOrder, setForceAuthForSharedOrder] = useState(false);
   const sharedAuthNoticeShownRef = useRef(false);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1033,14 +1034,6 @@ function AppContent() {
   useEffect(() => {
     if (!pendingSharedTarget) return;
 
-    if (!user || user.role !== 'client') {
-      if (!sharedAuthNoticeShownRef.current) {
-        sharedAuthNoticeShownRef.current = true;
-        alert('Para pedir este artículo debes iniciar sesión o registrarte como cliente.');
-      }
-      return;
-    }
-
     const business = allBusinesses.find((b) => b.id === pendingSharedTarget.businessId);
     if (!business) return;
 
@@ -1060,12 +1053,22 @@ function AppContent() {
       }
     }
 
+    if (!user || user.role !== 'client') {
+      return;
+    }
+
     localStorage.removeItem('pending_shared_target');
     if (window.location.search) {
       window.history.replaceState({}, '', window.location.pathname);
     }
     setPendingSharedTarget(null);
   }, [pendingSharedTarget, user, allBusinesses]);
+
+  useEffect(() => {
+    if (user?.role === 'client') {
+      setForceAuthForSharedOrder(false);
+    }
+  }, [user]);
 
   // Keep client GPS updated while order is active (every 30s)
   useEffect(() => {
@@ -1081,9 +1084,37 @@ function AppContent() {
     return () => { if (clientGpsIntervalRef.current) clearInterval(clientGpsIntervalRef.current); };
   }, [activeOrderId]);
 
-  if (!user) {
+  const canPreviewSharedContentAsGuest = !user && (
+    !!pendingSharedTarget ||
+    !!selectedBusiness ||
+    !!selectedMenuItem ||
+    view === 'menu' ||
+    view === 'restaurant'
+  );
+
+  if (!user && (!canPreviewSharedContentAsGuest || forceAuthForSharedOrder)) {
     return <Auth />;
   }
+
+  const requestSharedOrderAuth = () => {
+    const sharedTarget = {
+      businessId: selectedBusiness?.id || pendingSharedTarget?.businessId,
+      itemId: selectedMenuItem?.id || pendingSharedTarget?.itemId,
+      imageUrl: pendingSharedTarget?.imageUrl,
+    };
+
+    if (sharedTarget.businessId) {
+      localStorage.setItem('pending_shared_target', JSON.stringify(sharedTarget));
+      setPendingSharedTarget(sharedTarget as { businessId: string; itemId?: string; imageUrl?: string });
+    }
+
+    if (!sharedAuthNoticeShownRef.current) {
+      sharedAuthNoticeShownRef.current = true;
+      alert('Para agregar este artículo debes iniciar sesión o registrarte como cliente.');
+    }
+
+    setForceAuthForSharedOrder(true);
+  };
 
   const addToCart = (id: string, name: string, price: number, notes?: string) => {
     const normalizedNotes = (notes || '').trim();
@@ -1505,8 +1536,8 @@ function AppContent() {
   };
 
   // If user is not a client, show their specific view directly
-  if (user.role === 'delivery') return <DeliveryView />;
-  if (user.role === 'business') return (
+  if (user?.role === 'delivery') return <DeliveryView />;
+  if (user?.role === 'business') return (
     <>
       <AnimatePresence>
         {acceptedOrderSummary && (
@@ -1532,7 +1563,7 @@ function AppContent() {
       <BusinessView />
     </>
   );
-  if (user.role === 'admin') return <AdminView />;
+  if (user?.role === 'admin') return <AdminView />;
 
   return (
     <>
@@ -2047,6 +2078,11 @@ function AppContent() {
                         <button
                           type="button"
                           onClick={() => {
+                            if (!user || user.role !== 'client') {
+                              requestSharedOrderAuth();
+                              return;
+                            }
+
                             const selectedName = isDrink && activeDrinkSize
                               ? `${selectedMenuItem.name} (${activeDrinkSize.toUpperCase()})`
                               : selectedMenuItem.name;
