@@ -91,9 +91,9 @@ const ArrivalNotificationModal: React.FC<{ onConfirm: () => void }> = ({ onConfi
       <div className="p-6">
         <button onClick={onConfirm}
           className="w-full py-4 bg-teal-500 text-white rounded-2xl font-black text-lg hover:bg-teal-600 transition-all shadow-lg shadow-teal-200 flex items-center justify-center gap-3">
-          <CheckCircle2 className="w-6 h-6" /> Confirmar que el delivery llegó
+          <CheckCircle2 className="w-6 h-6" /> Entendido
         </button>
-        <p className="text-center text-xs text-gray-400 mt-3">Al confirmar, el pedido se marcará como entregado</p>
+        <p className="text-center text-xs text-gray-400 mt-3">El repartidor marcará tu pedido como entregado cuando lo recibas</p>
       </div>
     </motion.div>
   </motion.div>
@@ -726,13 +726,9 @@ function AppContent() {
     return () => { unsub(); soundService.stopRinging(); };
   }, [user?.role, user?.id]);
 
-  const handleConfirmArrival = async () => {
-    if (!arrivedOrderId) return;
+  const handleConfirmArrival = () => {
     soundService.stopRinging();
     setArrivedOrderId(null);
-    try {
-      await FirebaseServiceV2.updateOrder(arrivedOrderId, { status: 'delivered' });
-    } catch (err) { console.error('Error confirmando entrega:', err); }
   };
 
   // Subscribe to delivery location when order is on the way
