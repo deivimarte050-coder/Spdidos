@@ -322,6 +322,21 @@ const DeliveryView: React.FC = () => {
     }
   };
 
+  const formatPaymentMethod = (paymentMethod?: string) => {
+    const method = String(paymentMethod || '').toLowerCase();
+    if (method.includes('card') || method.includes('tarjeta')) return 'Tarjeta';
+    if (method.includes('cash') || method.includes('efectivo')) return 'Efectivo';
+    return paymentMethod || 'No especificado';
+  };
+
+  const getClientNotes = (order: Order) => {
+    const orderNotes = (order.deliveryInstructions || '').trim();
+    const itemNotes = (order.items || [])
+      .map((item) => (item.notes || '').trim())
+      .filter(Boolean);
+    return [orderNotes, ...itemNotes];
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40 p-4 flex items-center justify-between">
@@ -469,6 +484,32 @@ const DeliveryView: React.FC = () => {
                   </button>
                 </div>
 
+                <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Pedido #{myOrder.id}</p>
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Productos</p>
+                    <ul className="mt-1 text-sm text-gray-700 space-y-1">
+                      {(myOrder.items || []).map((item) => (
+                        <li key={`${item.id}-${item.notes || ''}`}>• {item.quantity}x {item.name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="bg-white rounded-lg p-2 border border-gray-100">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total</p>
+                      <p className="font-black text-gray-900">RD$ {myOrder.total?.toFixed(0)}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-2 border border-gray-100">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Pago</p>
+                      <p className="font-black text-gray-900">{formatPaymentMethod(myOrder.paymentMethod)}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Notas del cliente</p>
+                    <p className="text-sm text-gray-700 mt-1">{getClientNotes(myOrder).join(' · ') || 'Sin notas'}</p>
+                  </div>
+                </div>
+
                 <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={getClientLocTuple()} />
 
                 {/* Live location badge */}
@@ -563,10 +604,36 @@ const DeliveryView: React.FC = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="text-xs text-gray-600 bg-gray-50 rounded-xl p-3">
-                    <span className="font-bold">{order.items?.length || 0} items</span> · Total RD$ {order.total?.toFixed(0)}
-                    {order.clientName && <span> · Para: {order.clientName}</span>}
+
+                  <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Pedido #{order.id}</p>
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Productos</p>
+                      <ul className="mt-1 text-sm text-gray-700 space-y-1">
+                        {(order.items || []).map((item) => (
+                          <li key={`${item.id}-${item.notes || ''}`}>• {item.quantity}x {item.name}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="bg-white rounded-lg p-2 border border-gray-100">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total</p>
+                        <p className="font-black text-gray-900">RD$ {order.total?.toFixed(0)}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 border border-gray-100">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Pago</p>
+                        <p className="font-black text-gray-900">{formatPaymentMethod(order.paymentMethod)}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Notas del cliente</p>
+                      <p className="text-sm text-gray-700 mt-1">{getClientNotes(order).join(' · ') || 'Sin notas'}</p>
+                    </div>
+                    {order.clientName && (
+                      <p className="text-xs text-gray-500">Para: <span className="font-bold text-gray-700">{order.clientName}</span></p>
+                    )}
                   </div>
+
                   <button onClick={() => handleAcceptOrder(order)}
                     className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20">
                     Aceptar Pedido
