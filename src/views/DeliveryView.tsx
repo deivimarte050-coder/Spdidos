@@ -204,10 +204,18 @@ const DeliveryView: React.FC = () => {
   const [cancelledOrders, setCancelledOrders] = useState<Order[]>([]);
   const [isAvailable, setIsAvailable] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [earningsNow, setEarningsNow] = useState(() => Date.now());
   const [myLocation, setMyLocation] = useState<[number, number]>(SPM_CENTER);
   const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setEarningsNow(Date.now());
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
   // Subscribe to available (ready) orders — sound is handled globally in App.tsx
   useEffect(() => {
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
@@ -291,12 +299,22 @@ const DeliveryView: React.FC = () => {
       const deliveryDurationMinutes = Number.isFinite(createdAtMs)
         ? Math.max(1, Math.round((nowMs - createdAtMs) / 60000))
         : undefined;
+      const deliveredAt = new Date(nowMs).toISOString();
 
       await FirebaseServiceV2.updateOrder(myOrder.id, {
         status: 'delivered',
-        deliveredAt: new Date(nowMs).toISOString(),
+        deliveredAt,
         deliveryDurationMinutes
       });
+
+      const deliveredOrder: Order = {
+        ...myOrder,
+        status: 'delivered',
+        deliveredAt,
+        deliveryDurationMinutes,
+      };
+      setCompletedOrders((prev) => [deliveredOrder, ...prev.filter((o) => o.id !== deliveredOrder.id)]);
+      setMyOrder(null);
       setIsNavigating(false);
     } catch (err) { console.error('Error completando pedido:', err); }
   };
@@ -415,7 +433,7 @@ const DeliveryView: React.FC = () => {
 
   const earningsData = useMemo(() => {
     try {
-      const now = new Date();
+      const now = new Date(earningsNow);
       const todayStart = new Date(now);
       todayStart.setHours(0, 0, 0, 0);
       const weekStart = getWeekStart(now);
@@ -473,7 +491,7 @@ const DeliveryView: React.FC = () => {
         weeklyHistory: [] as { startKey: string; label: string; total: number; deliveries: number }[],
       };
     }
-  }, [completedOrders]);
+  }, [completedOrders, earningsNow]);
 
   const renderEarningsPanel = () => (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 space-y-4">
