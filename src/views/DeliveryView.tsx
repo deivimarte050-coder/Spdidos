@@ -200,6 +200,8 @@ const DeliveryView: React.FC = () => {
   const { user, logout } = useAuth();
   const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
   const [myOrder, setMyOrder] = useState<Order | null>(null);
+  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
+  const [cancelledOrders, setCancelledOrders] = useState<Order[]>([]);
   const [isAvailable, setIsAvailable] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const [myLocation, setMyLocation] = useState<[number, number]>(SPM_CENTER);
@@ -211,8 +213,16 @@ const DeliveryView: React.FC = () => {
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
       const available = orders.filter(o => o.status === 'ready');
       const mine = orders.find(o => o.deliveryId === user?.id && (o.status === 'on_the_way' || o.status === 'arrived'));
+      const completed = orders
+        .filter((o) => o.deliveryId === user?.id && o.status === 'delivered')
+        .sort((a, b) => new Date((b.deliveredAt || b.createdAt) as string).getTime() - new Date((a.deliveredAt || a.createdAt) as string).getTime());
+      const cancelled = orders
+        .filter((o) => o.deliveryId === user?.id && o.status === 'cancelled')
+        .sort((a, b) => new Date((b.cancelledAt || b.createdAt) as string).getTime() - new Date((a.cancelledAt || a.createdAt) as string).getTime());
       setAvailableOrders(available);
       setMyOrder(mine || null);
+      setCompletedOrders(completed);
+      setCancelledOrders(cancelled);
     });
     return unsub;
   }, [user?.id]);
@@ -337,6 +347,59 @@ const DeliveryView: React.FC = () => {
     return [orderNotes, ...itemNotes];
   };
 
+  const formatOrderDateTime = (order: Order, type: 'completed' | 'cancelled') => {
+    const sourceDate = type === 'completed'
+      ? (order.deliveredAt || order.createdAt)
+      : (order.cancelledAt || order.createdAt);
+    const date = new Date(sourceDate as string);
+    if (!Number.isFinite(date.getTime())) return 'Fecha no disponible';
+    const day = date.toLocaleDateString();
+    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${day} · ${time}`;
+  };
+
+  const renderDeliveryHistory = () => (
+    <div className="space-y-4">
+      <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-black uppercase tracking-wide text-emerald-700">Pedidos completados</h4>
+          <span className="text-xs font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">{completedOrders.length}</span>
+        </div>
+        {completedOrders.length === 0 ? (
+          <p className="text-sm text-gray-500">Aún no tienes pedidos completados.</p>
+        ) : (
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {completedOrders.slice(0, 20).map((order) => (
+              <div key={order.id} className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+                <p className="text-xs font-black text-emerald-700">Pedido #{order.id.slice(-8).toUpperCase()}</p>
+                <p className="text-sm font-bold text-gray-800 mt-1">{formatOrderDateTime(order, 'completed')}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-4 rounded-2xl border border-rose-100 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-black uppercase tracking-wide text-rose-700">Pedidos cancelados</h4>
+          <span className="text-xs font-bold px-2 py-1 rounded-full bg-rose-50 text-rose-700">{cancelledOrders.length}</span>
+        </div>
+        {cancelledOrders.length === 0 ? (
+          <p className="text-sm text-gray-500">No hay pedidos cancelados asignados a ti.</p>
+        ) : (
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {cancelledOrders.slice(0, 20).map((order) => (
+              <div key={order.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-3">
+                <p className="text-xs font-black text-rose-700">Pedido #{order.id.slice(-8).toUpperCase()}</p>
+                <p className="text-sm font-bold text-gray-800 mt-1">{formatOrderDateTime(order, 'cancelled')}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40 p-4 flex items-center justify-between">
@@ -456,6 +519,7 @@ const DeliveryView: React.FC = () => {
               </div>
             </div>
           ) : (
+            <>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-5 border-b border-gray-50 flex items-center justify-between">
@@ -562,6 +626,8 @@ const DeliveryView: React.FC = () => {
                 )}
               </div>
             </motion.div>
+            {renderDeliveryHistory()}
+            </>
           )
         ) : (
           /* ── PEDIDOS DISPONIBLES ── */
@@ -641,6 +707,7 @@ const DeliveryView: React.FC = () => {
                 </motion.div>
               ))
             )}
+            {renderDeliveryHistory()}
           </div>
         )}
       </div>
