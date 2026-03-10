@@ -276,7 +276,17 @@ const DeliveryView: React.FC = () => {
   const handleComplete = async () => {
     if (!myOrder) return;
     try {
-      await FirebaseServiceV2.updateOrder(myOrder.id, { status: 'delivered' });
+      const createdAtMs = new Date(myOrder.createdAt as any).getTime();
+      const nowMs = Date.now();
+      const deliveryDurationMinutes = Number.isFinite(createdAtMs)
+        ? Math.max(1, Math.round((nowMs - createdAtMs) / 60000))
+        : undefined;
+
+      await FirebaseServiceV2.updateOrder(myOrder.id, {
+        status: 'delivered',
+        deliveredAt: new Date(nowMs).toISOString(),
+        deliveryDurationMinutes
+      });
       setIsNavigating(false);
     } catch (err) { console.error('Error completando pedido:', err); }
   };
