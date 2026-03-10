@@ -23,6 +23,7 @@ const fallbackAnnouncement = {
 
 const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCategory }) => {
   const banner = announcement ?? fallbackAnnouncement;
+  const hasCustomAnnouncementImage = !!banner.imageUrl && banner.imageUrl !== fallbackAnnouncement.imageUrl;
   const handleCategorySelect = (categoryId: string) => onSelectCategory?.(categoryId);
 
   return (
@@ -44,23 +45,45 @@ const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCat
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="relative overflow-hidden rounded-2xl lg:rounded-3xl"
-          style={{ background: 'linear-gradient(120deg,#ff8c00 0%,#f97316 45%,#ea580c 100%)' }}
+          style={hasCustomAnnouncementImage
+            ? { background: '#111827' }
+            : { background: 'linear-gradient(120deg,#ff8c00 0%,#f97316 45%,#ea580c 100%)' }}
         >
+          {hasCustomAnnouncementImage && (
+            <motion.img
+              animate={{ scale: [1, 1.03, 1] }}
+              transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+              src={banner.imageUrl}
+              alt="Anuncio"
+              className="absolute inset-0 h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = fallbackAnnouncement.imageUrl;
+              }}
+            />
+          )}
+
           {/* Confetti dots */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            {[...Array(12)].map((_, i) => (
-              <div
-                key={i}
-                className="absolute w-2 h-2 rounded-full opacity-40"
-                style={{
-                  background: i % 3 === 0 ? '#fff' : i % 3 === 1 ? '#fde68a' : '#fed7aa',
-                  top: `${10 + (i * 17) % 80}%`,
-                  left: `${5 + (i * 13) % 55}%`,
-                  transform: `rotate(${i * 30}deg)`,
-                }}
-              />
-            ))}
-          </div>
+          {!hasCustomAnnouncementImage && (
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {[...Array(12)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-2 h-2 rounded-full opacity-40"
+                  style={{
+                    background: i % 3 === 0 ? '#fff' : i % 3 === 1 ? '#fde68a' : '#fed7aa',
+                    top: `${10 + (i * 17) % 80}%`,
+                    left: `${5 + (i * 13) % 55}%`,
+                    transform: `rotate(${i * 30}deg)`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {hasCustomAnnouncementImage && (
+            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-black/10 pointer-events-none" />
+          )}
 
           {/* Text content */}
           <motion.div
@@ -80,23 +103,27 @@ const HomeView: React.FC<HomeViewProps> = ({ children, announcement, onSelectCat
             </motion.button>
           </motion.div>
 
-          {/* Food image */}
-          <motion.img
-            animate={{ scale: [1, 1.03, 1] }}
-            transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
-            src={banner.imageUrl}
-            alt="Comida"
-            className="absolute right-0 top-0 h-full w-[45%] object-cover object-left"
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = fallbackAnnouncement.imageUrl;
-            }}
-          />
-          {/* Left-side fade overlay so text stays readable */}
-          <div
-            className="absolute inset-y-0 right-[33%] w-20 pointer-events-none"
-            style={{ background: 'linear-gradient(to right, #f97316, transparent)' }}
-          />
+          {!hasCustomAnnouncementImage && (
+            <>
+              {/* Food image */}
+              <motion.img
+                animate={{ scale: [1, 1.03, 1] }}
+                transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+                src={banner.imageUrl}
+                alt="Comida"
+                className="absolute right-0 top-0 h-full w-[45%] object-cover object-left"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = fallbackAnnouncement.imageUrl;
+                }}
+              />
+              {/* Left-side fade overlay so text stays readable */}
+              <div
+                className="absolute inset-y-0 right-[33%] w-20 pointer-events-none"
+                style={{ background: 'linear-gradient(to right, #f97316, transparent)' }}
+              />
+            </>
+          )}
         </motion.div>
 
         {/* ── Category cards ────────────────────────────────────────────── */}

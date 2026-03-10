@@ -41,6 +41,8 @@ import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import EventService from '../services/EventService'; // Importar EventService
 import { User as AppUser } from '../types';
 
+const DEFAULT_ANNOUNCEMENT_IMAGE_URL = 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center';
+
 const AdminView: React.FC = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports' | 'announcements'>('dashboard');
@@ -59,7 +61,7 @@ const AdminView: React.FC = () => {
     topText: '¡Hace hasta un',
     highlightText: '50% DCTO!',
     ctaText: 'PEDIR YA',
-    imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center',
+    imageUrl: DEFAULT_ANNOUNCEMENT_IMAGE_URL,
   });
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
@@ -447,6 +449,8 @@ const AdminView: React.FC = () => {
     o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     o.businessName.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const hasCustomAnnouncementImage = !!announcementForm.imageUrl && announcementForm.imageUrl !== DEFAULT_ANNOUNCEMENT_IMAGE_URL;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -1406,8 +1410,27 @@ const AdminView: React.FC = () => {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.35 }}
                   className="relative overflow-hidden rounded-2xl"
-                  style={{ background: 'linear-gradient(120deg,#ff8c00 0%,#f97316 45%,#ea580c 100%)' }}
+                  style={hasCustomAnnouncementImage
+                    ? { background: '#111827' }
+                    : { background: 'linear-gradient(120deg,#ff8c00 0%,#f97316 45%,#ea580c 100%)' }}
                 >
+                  {hasCustomAnnouncementImage && (
+                    <motion.img
+                      animate={{ scale: [1, 1.03, 1] }}
+                      transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+                      src={announcementForm.imageUrl}
+                      alt="Preview anuncio"
+                      className="absolute inset-0 h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = DEFAULT_ANNOUNCEMENT_IMAGE_URL;
+                      }}
+                    />
+                  )}
+
+                  {hasCustomAnnouncementImage && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-black/10 pointer-events-none" />
+                  )}
+
                   <motion.div
                     animate={{ y: [0, -3, 0] }}
                     transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
@@ -1420,18 +1443,22 @@ const AdminView: React.FC = () => {
                     </button>
                   </motion.div>
 
-                  <motion.img
-                    animate={{ scale: [1, 1.03, 1] }}
-                    transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
-                    src={announcementForm.imageUrl}
-                    alt="Preview anuncio"
-                    className="absolute right-0 top-0 h-full w-[45%] object-cover object-left"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center';
-                    }}
-                  />
+                  {!hasCustomAnnouncementImage && (
+                    <>
+                      <motion.img
+                        animate={{ scale: [1, 1.03, 1] }}
+                        transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+                        src={announcementForm.imageUrl}
+                        alt="Preview anuncio"
+                        className="absolute right-0 top-0 h-full w-[45%] object-cover object-left"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = DEFAULT_ANNOUNCEMENT_IMAGE_URL;
+                        }}
+                      />
 
-                  <div className="absolute inset-y-0 right-[33%] w-14 pointer-events-none" style={{ background: 'linear-gradient(to right, #f97316, transparent)' }} />
+                      <div className="absolute inset-y-0 right-[33%] w-14 pointer-events-none" style={{ background: 'linear-gradient(to right, #f97316, transparent)' }} />
+                    </>
+                  )}
                 </motion.div>
               </div>
             </motion.div>
