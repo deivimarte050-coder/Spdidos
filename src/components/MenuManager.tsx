@@ -108,36 +108,52 @@ const MenuManager: React.FC = () => {
         }
       }
 
-      const convertedMenu: any[] = [];
-      for (const item of updatedMenu) {
-        const sizes: Array<{size: string; price: number}> = [];
-        if (isDrinkCategory(item.category) && Array.isArray(item.drinkSizes)) {
-          for (const ds of item.drinkSizes) {
-            if (ds && ds.size && String(ds.size).trim()) {
-              sizes.push({ size: String(ds.size).trim().toLowerCase(), price: Number(ds.price) || 0 });
-            }
-          }
-        }
-        convertedMenu.push({
+      // Construir menú limpio — solo tipos primitivos, sin undefined/null
+      const safeMenu: Record<string, any>[] = updatedMenu.map(item => {
+        const obj: Record<string, any> = {
           id: String(item.id || Date.now()),
           name: String(item.name || ''),
           description: String(item.description || ''),
           price: Number(item.price) || 0,
           category: String(item.category || ''),
           image: String(item.image || ''),
-          available: Boolean(item.isAvailable !== false && item.isActive !== false),
-          drinkSizes: sizes
-        });
-      }
-      // JSON roundtrip elimina undefined, functions, y cualquier dato no serializable
-      const safeMenu = JSON.parse(JSON.stringify(convertedMenu));
-
-      // Escribir directo a Firestore con updateDoc (solo actualiza el campo menu)
-      const businessRef = doc(db, 'businesses', businessIdRef.current);
-      await updateDoc(businessRef, {
-        menu: safeMenu,
-        updatedAt: Timestamp.now()
+          available: item.isAvailable !== false && item.isActive !== false ? true : false
+        };
+        // Solo agregar drinkSizes si tiene entradas válidas (evitar arrays vacíos anidados)
+        if (isDrinkCategory(item.category) && Array.isArray(item.drinkSizes) && item.drinkSizes.length > 0) {
+          const validSizes = item.drinkSizes
+            .filter(ds => ds && ds.size && String(ds.size).trim())
+            .map(ds => ({ size: String(ds.size).trim().toLowerCase(), price: Number(ds.price) || 0 }));
+          if (validSizes.length > 0) {
+            obj.drinkSizes = validSizes;
+          }
+        }
+        return obj;
       });
+
+      // Limpiar con JSON roundtrip para eliminar cualquier tipo no serializable
+      const cleanMenu = JSON.parse(JSON.stringify(safeMenu));
+
+      const businessRef = doc(db, 'businesses', businessIdRef.current);
+      try {
+        await updateDoc(businessRef, {
+          menu: cleanMenu,
+          updatedAt: Timestamp.now()
+        });
+      } catch (writeErr: any) {
+        // Si falla, intentar sin Timestamp
+        console.error('Intento 1 falló:', writeErr?.message);
+        try {
+          await updateDoc(businessRef, {
+            menu: cleanMenu,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (writeErr2: any) {
+          // Si aún falla, intentar guardando solo el campo menu
+          console.error('Intento 2 falló:', writeErr2?.message);
+          await updateDoc(businessRef, { menu: cleanMenu });
+        }
+      }
 
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2500);
@@ -146,7 +162,6 @@ const MenuManager: React.FC = () => {
       console.error('❌ [MenuManager] Error guardando:', msg);
       setSaveError(msg);
       setSaveStatus('error');
-      // Mostrar alerta en móvil para ver el error exacto
       alert('Error guardando menú: ' + msg);
       setTimeout(() => setSaveStatus('idle'), 5000);
     } finally {
