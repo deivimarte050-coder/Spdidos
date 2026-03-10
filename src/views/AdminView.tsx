@@ -27,6 +27,7 @@ import {
   AlertCircle,
   X,
   Truck,
+  Bike,
   ChefHat,
   UserCheck,
   Megaphone,
@@ -53,6 +54,7 @@ const AdminView: React.FC = () => {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [deliveryFeeDrafts, setDeliveryFeeDrafts] = useState<Record<string, string>>({});
   const [announcementForm, setAnnouncementForm] = useState({
     topText: '¡Hace hasta un',
     highlightText: '50% DCTO!',
@@ -128,6 +130,38 @@ const AdminView: React.FC = () => {
       unsubLocal();
     };
   }, []);
+
+  useEffect(() => {
+    setDeliveryFeeDrafts((prev) => {
+      const next = { ...prev };
+      businesses.forEach((business) => {
+        if (next[business.id] === undefined) {
+          const currentFee = Number((business as any).deliveryFee ?? 50);
+          next[business.id] = String(Number.isFinite(currentFee) && currentFee >= 0 ? currentFee : 50);
+        }
+      });
+      return next;
+    });
+  }, [businesses]);
+
+  const handleSaveBusinessDeliveryFee = async (businessId: string) => {
+    const rawValue = deliveryFeeDrafts[businessId] ?? '';
+    const parsedFee = Number(rawValue);
+
+    if (!Number.isFinite(parsedFee) || parsedFee < 0) {
+      alert('Ingresa un costo de delivery válido (0 o mayor).');
+      return;
+    }
+
+    try {
+      await FirebaseServiceV2.updateBusiness(businessId, { deliveryFee: parsedFee });
+      setBusinesses((prev) => prev.map((b) => (b.id === businessId ? { ...b, deliveryFee: parsedFee } : b)));
+      alert('✅ Costo de delivery actualizado');
+    } catch (error: any) {
+      console.error('❌ Error actualizando costo de delivery:', error);
+      alert(`❌ No se pudo guardar el costo de delivery: ${error.message || 'Error desconocido'}`);
+    }
+  };
 
   const handleAnnouncementImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -881,6 +915,7 @@ const AdminView: React.FC = () => {
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Estado</th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Pedidos</th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Ingresos</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Costo Delivery</th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Acciones</th>
                       </tr>
                     </thead>
@@ -916,6 +951,28 @@ const AdminView: React.FC = () => {
                           </td>
                           <td className="px-6 py-4">
                             <p className="font-medium text-gray-900">RD$ {business.totalRevenue.toLocaleString()}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 min-w-[220px]">
+                              <div className="flex items-center gap-1 text-emerald-700 font-bold text-xs bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+                                <Bike className="w-3.5 h-3.5" />
+                                RD$
+                              </div>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={deliveryFeeDrafts[business.id] ?? String(Number((business as any).deliveryFee ?? 50))}
+                                onChange={(e) => setDeliveryFeeDrafts((prev) => ({ ...prev, [business.id]: e.target.value }))}
+                                className="w-20 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                              />
+                              <button
+                                onClick={() => handleSaveBusinessDeliveryFee(business.id)}
+                                className="px-2.5 py-1.5 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary/90 transition-all"
+                              >
+                                Guardar
+                              </button>
+                            </div>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
