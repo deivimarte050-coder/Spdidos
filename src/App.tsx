@@ -1270,7 +1270,6 @@ function AppContent() {
     const params = new URLSearchParams({
       share: 'restaurant',
       business: business.id,
-      img: business.image || '',
     });
     return `${base}?${params.toString()}`;
   };
@@ -1281,7 +1280,6 @@ function AppContent() {
       share: 'item',
       business: business.id,
       item: item.id,
-      img: item.image || business.image || '',
     });
     return `${base}?${params.toString()}`;
   };
@@ -1313,7 +1311,7 @@ function AppContent() {
     const url = buildRestaurantShareLink(business);
     await shareLink({
       title: `Pide en ${business.name}`,
-      text: `Mira el menú de ${business.name} en Spdidos: ${business.image}`,
+      text: `Mira el menú de ${business.name} en Spdidos`,
       url,
     });
   };
@@ -1322,7 +1320,7 @@ function AppContent() {
     const url = buildMenuItemShareLink(business, item);
     await shareLink({
       title: `${item.name} · ${business.name}`,
-      text: `Quiero pedir este artículo: ${item.name}. Imagen: ${item.image || business.image || ''}`,
+      text: `Quiero pedir este artículo: ${item.name}`,
       url,
     });
   };
