@@ -904,7 +904,47 @@ const AdminView: React.FC = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
+              className="space-y-4"
             >
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Bike className="w-5 h-5 text-emerald-600" />
+                  <h3 className="text-base md:text-lg font-black text-gray-900">Precio de viajes delivery</h3>
+                </div>
+                <p className="text-xs md:text-sm text-gray-500 mb-4">
+                  Cambia el precio por negocio y presiona <span className="font-bold">Guardar</span>.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {filteredBusinesses.map((business) => (
+                    <div key={`delivery-fee-card-${business.id}`} className="border border-gray-100 rounded-xl p-3 bg-gray-50">
+                      <p className="text-sm font-bold text-gray-900 truncate">{business.name}</p>
+                      <p className="text-xs text-gray-500 mb-2">{business.category}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 text-emerald-700 font-bold text-xs bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+                          <Bike className="w-3.5 h-3.5" />
+                          RD$
+                        </div>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={deliveryFeeDrafts[business.id] ?? String(Number((business as any).deliveryFee ?? 50))}
+                          onChange={(e) => setDeliveryFeeDrafts((prev) => ({ ...prev, [business.id]: e.target.value }))}
+                          className="w-20 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        />
+                        <button
+                          onClick={() => handleSaveBusinessDeliveryFee(business.id)}
+                          className="px-2.5 py-1.5 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary/90 transition-all"
+                        >
+                          Guardar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
