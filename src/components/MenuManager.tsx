@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Edit2, Trash2, Upload, Save, X, Eye, EyeOff } from 'lucide-react';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
@@ -25,6 +25,8 @@ const presetSizes = ['Pequeño', 'Mediano', 'Grande', '12 oz', '16 oz', '24 oz']
 const MenuManager: React.FC = () => {
   const { user } = useAuth();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const savingRef = useRef(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newItem, setNewItem] = useState<Partial<MenuItem>>({
@@ -48,10 +50,12 @@ const MenuManager: React.FC = () => {
   // Cargar menú del negocio actual desde Firebase
   useEffect(() => {
     const loadMenu = async () => {
+      if (savingRef.current) return; // No recargar mientras se guarda
       if (user?.role === 'business') {
         try {
           console.log('🔍 [MenuManager] Cargando menú desde Firebase...');
           const businesses = await FirebaseServiceV2.getBusinesses();
+          if (savingRef.current) return; // Verificar de nuevo por si se inició un save durante el fetch
           const business = businesses.find(b => b.email === user.email);
           if (business && business.menu) {
             const convertedMenu: MenuItem[] = business.menu.map((item: any) => ({
@@ -76,21 +80,22 @@ const MenuManager: React.FC = () => {
 
     loadMenu();
     
-    // Recargar cada 30 segundos
-    const interval = setInterval(loadMenu, 30000);
+    // Recargar cada 60 segundos (solo si no está guardando)
+    const interval = setInterval(loadMenu, 60000);
     return () => clearInterval(interval);
   }, [user]);
 
   // Guardar menú en Firebase
   const saveMenuToFirebase = async (updatedMenu: MenuItem[]) => {
     if (user?.role === 'business') {
+      savingRef.current = true;
+      setSaveStatus('saving');
       try {
         console.log('💾 [MenuManager] Guardando menú en Firebase...');
         const businesses = await FirebaseServiceV2.getBusinesses();
-        const businessIndex = businesses.findIndex(b => b.email === user.email);
+        const business = businesses.find(b => b.email === user.email);
         
-        if (businessIndex !== -1) {
-          const business = businesses[businessIndex];
+        if (business) {
           // Convertir al formato del DataService/Firebase
           const convertedMenu = updatedMenu.map(item => ({
             id: item.id,
@@ -103,15 +108,24 @@ const MenuManager: React.FC = () => {
             drinkSizes: isDrinkCategory(item.category) ? sanitizeDrinkSizes(item.drinkSizes) : []
           }));
           
-          // Actualizar el negocio con el nuevo menú
+          // Solo actualizar el campo menu, no spread del objeto completo
           await FirebaseServiceV2.updateBusiness(business.id, {
-            ...business,
             menu: convertedMenu
           });
           console.log('✅ [MenuManager] Menú guardado en Firebase');
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus('idle'), 2500);
+        } else {
+          console.error('❌ [MenuManager] No se encontró el negocio con email:', user.email);
+          setSaveStatus('error');
+          setTimeout(() => setSaveStatus('idle'), 3000);
         }
       } catch (error) {
         console.error('❌ [MenuManager] Error guardando menú:', error);
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+      } finally {
+        savingRef.current = false;
       }
     }
   };
@@ -235,7 +249,12 @@ const MenuManager: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black font-display text-gray-900">Gestión de Menú</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-black font-display text-gray-900">Gestión de Menú</h2>
+          {saveStatus === 'saving' && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full animate-pulse">Guardando...</span>}
+          {saveStatus === 'saved' && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">✓ Guardado</span>}
+          {saveStatus === 'error' && <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">✗ Error al guardar</span>}
+        </div>
         <button
           onClick={() => setIsAddingNew(true)}
           className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-2xl font-bold text-sm hover:bg-primary/90 transition-all"
