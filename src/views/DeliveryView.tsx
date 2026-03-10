@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Package, MapPin, CheckCircle2, Navigation, Store, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map, ChevronRight } from 'lucide-react';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
@@ -400,6 +400,116 @@ const DeliveryView: React.FC = () => {
     </div>
   );
 
+  const getWeekStart = (date: Date) => {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    const day = (copy.getDay() + 6) % 7;
+    copy.setDate(copy.getDate() - day);
+    return copy;
+  };
+
+  const getOrderEarning = (order: Order) => {
+    const fee = Number(order.deliveryFee);
+    return Number.isFinite(fee) && fee >= 0 ? fee : 150;
+  };
+
+  const earningsData = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const weekStart = getWeekStart(now);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentWeekKey = weekStart.toISOString().slice(0, 10);
+
+    let today = 0;
+    let week = 0;
+    let month = 0;
+    const weeklyMap = new Map<string, { total: number; deliveries: number }>();
+
+    completedOrders.forEach((order) => {
+      const deliveredDate = new Date((order.deliveredAt || order.createdAt) as string);
+      if (!Number.isFinite(deliveredDate.getTime())) return;
+
+      const earning = getOrderEarning(order);
+      if (deliveredDate >= todayStart) today += earning;
+      if (deliveredDate >= weekStart) week += earning;
+      if (deliveredDate >= monthStart) month += earning;
+
+      const orderWeekStart = getWeekStart(deliveredDate);
+      const key = orderWeekStart.toISOString().slice(0, 10);
+      if (key === currentWeekKey) return;
+      const prev = weeklyMap.get(key) || { total: 0, deliveries: 0 };
+      weeklyMap.set(key, { total: prev.total + earning, deliveries: prev.deliveries + 1 });
+    });
+
+    const weeklyHistory = Array.from(weeklyMap.entries())
+      .map(([startKey, value]) => {
+        const start = new Date(`${startKey}T00:00:00`);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        return {
+          startKey,
+          label: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
+          total: value.total,
+          deliveries: value.deliveries,
+        };
+      })
+      .sort((a, b) => (a.startKey < b.startKey ? 1 : -1));
+
+    return {
+      today,
+      week,
+      month,
+      weeklyHistory,
+    };
+  }, [completedOrders]);
+
+  const renderEarningsPanel = () => (
+    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-black text-gray-900 uppercase tracking-wide">Ganancias</h3>
+        <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">Repartidor</span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Hoy</p>
+          <p className="text-2xl font-black text-emerald-800 mt-1">RD$ {earningsData.today.toFixed(0)}</p>
+        </div>
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Semana</p>
+          <p className="text-2xl font-black text-blue-800 mt-1">RD$ {earningsData.week.toFixed(0)}</p>
+        </div>
+        <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-purple-700">Mes</p>
+          <p className="text-2xl font-black text-purple-800 mt-1">RD$ {earningsData.month.toFixed(0)}</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-black uppercase tracking-wide text-gray-700">Historial semanal</h4>
+          <span className="text-[11px] text-gray-500">La semana actual se reinicia automáticamente</span>
+        </div>
+        {earningsData.weeklyHistory.length === 0 ? (
+          <p className="text-sm text-gray-500">No hay semanas anteriores con entregas.</p>
+        ) : (
+          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+            {earningsData.weeklyHistory.map((entry) => (
+              <div key={entry.startKey} className="bg-white border border-gray-100 rounded-xl p-3">
+                <p className="text-xs font-bold text-gray-500">{entry.label}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-sm text-gray-600">{entry.deliveries} pedidos</p>
+                  <p className="text-sm font-black text-gray-900">RD$ {entry.total.toFixed(0)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40 p-4 flex items-center justify-between">
@@ -423,6 +533,7 @@ const DeliveryView: React.FC = () => {
       </header>
 
       <div className="p-4 space-y-5">
+        {renderEarningsPanel()}
         {!isAvailable ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             className="bg-white p-10 rounded-3xl border border-gray-100 text-center space-y-5 shadow-sm mt-4">
