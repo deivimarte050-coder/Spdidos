@@ -1351,7 +1351,7 @@ function AppContent() {
     const url = buildMenuItemShareLink(business, item);
     await shareLink({
       title: `${item.name} · ${business.name}`,
-      text: `Quiero pedir este artículo: ${item.name}`,
+      text: `Mira en el menú: ${item.name}`,
       url,
     });
   };
