@@ -1287,20 +1287,26 @@ function AppContent() {
   };
 
   const shareLink = async (options: { title: string; text: string; url: string }) => {
-    try {
-      if (navigator.share) {
+    if (navigator.share) {
+      try {
         await navigator.share(options);
         return;
+      } catch (error) {
+        console.warn('Share nativo no disponible, usando fallback:', error);
       }
+    }
+
+    try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(options.url);
         alert('✅ Link copiado para compartir');
         return;
       }
-      prompt('Copia este link para compartir:', options.url);
-    } catch {
-      // Usuario canceló el share nativo
+    } catch (error) {
+      console.warn('No se pudo copiar al portapapeles:', error);
     }
+
+    window.prompt('Copia este link para compartir:', options.url);
   };
 
   const handleShareBusiness = async (business: Business) => {
@@ -1669,6 +1675,13 @@ function AppContent() {
                       </button>
 
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleShareBusiness(business)}
+                          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+                          title="Compartir negocio"
+                        >
+                          <Share2 className="w-4 h-4 text-gray-600" />
+                        </button>
                         <span className="text-sm font-black text-gray-800 flex items-center gap-1">
                           <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> {business.rating || 4.8}
                         </span>
@@ -1805,6 +1818,13 @@ function AppContent() {
                 placeholder={`Buscar en ${selectedBusiness.name}`}
                 className="flex-1 bg-white rounded-full h-11 px-4 text-sm font-medium shadow-sm border border-gray-100 outline-none focus:ring-2 focus:ring-primary/20"
               />
+              <button
+                onClick={() => handleShareBusiness(selectedBusiness)}
+                className="w-11 h-11 rounded-full flex items-center justify-center shadow-sm border bg-white border-gray-100 text-gray-500"
+                title="Compartir negocio"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
               <button
                 onClick={toggleFavoriteBusiness}
                 className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sm border transition-all ${
