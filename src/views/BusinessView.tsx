@@ -5,6 +5,7 @@ import { OrderService } from '../services/OrderService';
 import { Order } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
+import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import BusinessProfile from '../components/BusinessProfile';
 import MenuManager from '../components/MenuManager';
 import BusinessOrders from '../components/BusinessOrders';
@@ -12,13 +13,71 @@ import BusinessOrders from '../components/BusinessOrders';
 const BusinessView: React.FC = () => {
   const { user, logout } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [businessId, setBusinessId] = useState<string | null>((user as any)?.businessId || null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'profile' | 'menu' | 'orders'>('dashboard');
 
   useEffect(() => {
-    return OrderService.subscribe(setOrders);
-  }, []);
+    let isMounted = true;
+    const resolveBusinessId = async () => {
+      const userBusinessId = (user as any)?.businessId;
+      if (userBusinessId) {
+        setBusinessId(userBusinessId);
+        return;
+      }
 
-  const activeOrders = orders.filter(o => o.status !== 'delivered');
+      if (!user?.email) return;
+
+      try {
+        const businesses = await FirebaseServiceV2.getBusinesses();
+        const business = businesses.find((b: any) => b.email === user.email);
+        if (isMounted && business?.id) {
+          setBusinessId(business.id);
+        }
+      } catch (error) {
+        console.error('❌ Error obteniendo businessId:', error);
+      }
+    };
+
+    resolveBusinessId();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!businessId) {
+      setOrders([]);
+      return;
+    }
+
+    return FirebaseServiceV2.subscribeToBusinessOrders(businessId, (data) => {
+      setOrders(data as Order[]);
+    });
+  }, [businessId]);
+
+  const now = new Date();
+  const pedidosHoy = orders.filter((o) => {
+    const createdAt = new Date((o as any).createdAt);
+    if (Number.isNaN(createdAt.getTime())) return false;
+    return createdAt.getDate() === now.getDate()
+      && createdAt.getMonth() === now.getMonth()
+      && createdAt.getFullYear() === now.getFullYear();
+  }).length;
+
+  const ventasTotales = orders
+    .filter((o) => o.status === 'delivered')
+    .reduce((sum, o) => {
+      const subtotal = Number((o as any).subtotal);
+      if (Number.isFinite(subtotal) && subtotal >= 0) return sum + subtotal;
+
+      const total = Number((o as any).total);
+      const deliveryFee = Number((o as any).deliveryFee ?? 0);
+      if (Number.isFinite(total) && Number.isFinite(deliveryFee)) {
+        return sum + Math.max(total - deliveryFee, 0);
+      }
+      return sum;
+    }, 0);
 
   const tabs = [
     { id: 'dashboard', label: 'Panel', icon: LayoutDashboard },
@@ -98,11 +157,11 @@ const BusinessView: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-black/5 text-center">
                   <p className="text-gray-500 text-sm">Pedidos Hoy</p>
-                  <p className="text-3xl font-bold font-display">{activeOrders.length}</p>
+                  <p className="text-3xl font-bold font-display">{pedidosHoy}</p>
                 </div>
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-black/5 text-center">
                   <p className="text-gray-500 text-sm">Ventas</p>
-                  <p className="text-3xl font-bold font-display text-emerald-600">RD$ 4,500</p>
+                  <p className="text-3xl font-bold font-display text-emerald-600">RD$ {ventasTotales.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-black/5 text-center">
                   <p className="text-gray-500 text-sm">Rating</p>
