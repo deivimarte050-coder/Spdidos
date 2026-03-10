@@ -10,6 +10,7 @@ interface CartDrawerProps {
   onAdd: (item: any) => void;
   onRemove: (id: string) => void;
   onCheckout: () => void;
+  isCheckingOut?: boolean;
 }
 
 const CartDrawer: React.FC<CartDrawerProps> = ({ 
@@ -18,7 +19,8 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   items, 
   onAdd, 
   onRemove, 
-  onCheckout 
+  onCheckout,
+  isCheckingOut = false
 }) => {
   const total = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
@@ -117,9 +119,14 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                 </div>
                 <button 
                   onClick={onCheckout}
-                  className="w-full bg-primary text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  disabled={isCheckingOut}
+                  className={`w-full py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl transition-all ${
+                    isCheckingOut
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+                      : 'bg-primary text-white shadow-primary/20 hover:scale-[1.02] active:scale-[0.98]'
+                  }`}
                 >
-                  Confirmar Pedido
+                  {isCheckingOut ? 'Procesando pedido...' : 'Confirmar Pedido'}
                 </button>
               </div>
             )}
