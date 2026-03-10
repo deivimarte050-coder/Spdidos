@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Package, MapPin, CheckCircle2, Navigation, Store, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map, ChevronRight } from 'lucide-react';
+import { Package, MapPin, CheckCircle2, Navigation, Store, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map as MapIcon, ChevronRight } from 'lucide-react';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { soundService } from '../services/SoundService';
 import { Order } from '../types';
@@ -428,7 +428,15 @@ const DeliveryView: React.FC = () => {
 
   const getOrderEarning = (order: Order) => {
     const fee = Number(order.deliveryFee);
-    return Number.isFinite(fee) && fee >= 0 ? fee : 150;
+    if (Number.isFinite(fee) && fee >= 0) return fee;
+
+    const total = Number(order.total);
+    const subtotal = Number(order.subtotal);
+    if (Number.isFinite(total) && Number.isFinite(subtotal)) {
+      return Math.max(0, total - subtotal);
+    }
+
+    return 0;
   };
 
   const earningsData = useMemo(() => {
@@ -728,7 +736,7 @@ const DeliveryView: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={openInGoogleMaps}
                     className="flex items-center justify-center gap-2 p-3 bg-blue-600 text-white rounded-xl font-bold text-sm">
-                    <Map className="w-4 h-4" /> Google Maps
+                    <MapIcon className="w-4 h-4" /> Google Maps
                   </button>
                   <button onClick={openInWaze}
                     className="flex items-center justify-center gap-2 p-3 bg-[#33ccff] text-white rounded-xl font-bold text-sm">
