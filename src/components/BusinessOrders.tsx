@@ -8,6 +8,80 @@ import { useAuth } from '../contexts/AuthContext';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 
+const OrderDetailsModal: React.FC<{ order: Order; onClose: () => void }> = ({ order, onClose }) => {
+  const acceptedDate = order.acceptedAt ? new Date(order.acceptedAt) : null;
+  const acceptedTime = acceptedDate
+    ? acceptedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'Aún no aceptado';
+  const uniqueNotes = Array.from(new Set((order.items || [])
+    .map((item) => String(item.notes || '').trim())
+    .filter(Boolean)));
+  const clientNote = uniqueNotes.length > 0
+    ? uniqueNotes.join(' · ')
+    : (order.deliveryInstructions || 'Sin nota del cliente');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)' }}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 20 }}
+        className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden max-h-[92vh]"
+      >
+        <div className="bg-primary px-6 py-4 text-white">
+          <h3 className="text-lg font-black">Detalles del pedido</h3>
+          <p className="text-white/85 text-sm">Resumen completo para preparar la orden</p>
+        </div>
+
+        <div className="p-6 space-y-5 overflow-y-auto max-h-[72vh]">
+          <div className="bg-gray-50 rounded-2xl p-4 space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">ID / Número</span><span className="font-black">#{order.id.slice(-8).toUpperCase()}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Hora de aceptación</span><span className="font-black">{acceptedTime}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Total del pedido</span><span className="font-black text-emerald-700">RD$ {order.total?.toFixed(0)}</span></div>
+          </div>
+
+          <div>
+            <p className="font-black text-gray-900 mb-2">Productos pedidos</p>
+            <div className="space-y-2">
+              {(order.items || []).map((item) => (
+                <div key={`${item.id}-${item.notes || 'sin-nota'}`} className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700"><span className="font-black">{item.quantity}x</span> {item.name}</span>
+                    <span className="font-black">RD$ {(item.price * item.quantity).toFixed(0)}</span>
+                  </div>
+                  {item.notes && <p className="text-xs text-gray-500 mt-1">Nota del cliente: {item.notes}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-blue-50 rounded-2xl p-4 space-y-2 text-sm">
+            <p><span className="font-black text-blue-900">Nombre:</span> <span className="text-blue-900">{order.clientName || 'No disponible'}</span></p>
+            <p><span className="font-black text-blue-900">Teléfono:</span> <span className="text-blue-900">{order.clientPhone || order.clientWhatsapp || 'No disponible'}</span></p>
+            <p><span className="font-black text-blue-900">Dirección exacta:</span> <span className="text-blue-900">{order.deliveryAddress || 'No disponible'}</span></p>
+            <p><span className="font-black text-blue-900">Nota del cliente:</span> <span className="text-blue-900">{clientNote}</span></p>
+          </div>
+        </div>
+
+        <div className="p-6 pt-0">
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-2xl bg-primary text-white font-black hover:bg-primary/90 transition-all"
+          >
+            Cerrar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Nuevo Pedido',
   accepted: 'Aceptado',
@@ -146,6 +220,7 @@ const BusinessOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<string>('active');
   const [loading, setLoading] = useState(true);
+  const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   useEffect(() => {
     const businessId = (user as any)?.businessId;
     if (!businessId) { setLoading(false); return; }
@@ -193,6 +268,12 @@ const BusinessOrders: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <AnimatePresence>
+        {detailsOrder && (
+          <OrderDetailsModal order={detailsOrder} onClose={() => setDetailsOrder(null)} />
+        )}
+      </AnimatePresence>
+
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black font-display text-gray-900">Pedidos en Tiempo Real</h2>
         <div className="flex items-center gap-2">
@@ -315,6 +396,12 @@ const BusinessOrders: React.FC = () => {
 
               {/* Acciones */}
               <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => setDetailsOrder(order)}
+                  className="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                >
+                  Más detalles
+                </button>
                 {order.status === 'pending' && (
                   <>
                     <button onClick={() => handleUpdateStatus(order.id, 'accepted')}

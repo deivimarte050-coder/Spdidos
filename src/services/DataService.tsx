@@ -15,6 +15,7 @@ export interface Business {
   totalRevenue: number;
   address: string;
   image: string;
+  deliveryFee?: number;
   openingTime?: string;
   closingTime?: string;
   weeklySchedule?: Partial<WeeklyBusinessSchedule>;
@@ -163,6 +164,7 @@ class DataService {
       totalOrders: 0,
       totalRevenue: 0,
       status: 'pending',
+      deliveryFee: (businessData as any).deliveryFee ?? 50,
       menu: [
         {
           id: `${Date.now()}_1`,

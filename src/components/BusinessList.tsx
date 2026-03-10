@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Star, Clock, ChevronRight, MapPin } from 'lucide-react';
+import { Star, Clock, ChevronRight, MapPin, Bike } from 'lucide-react';
 import { Business } from '../services/DataService';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 
@@ -12,6 +12,11 @@ interface BusinessListProps {
 const BusinessList: React.FC<BusinessListProps> = ({ onBusinessSelect, showOnlyActive = true }) => {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const getDeliveryFee = (business: Business): number => {
+    const fee = Number((business as any).deliveryFee);
+    return Number.isFinite(fee) && fee >= 0 ? fee : 50;
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -111,8 +116,8 @@ const BusinessList: React.FC<BusinessListProps> = ({ onBusinessSelect, showOnlyA
             <div className="p-3">
               <h3 className="font-black text-gray-900 text-sm leading-tight truncate mb-1.5">{business.name}</h3>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-md uppercase tracking-wide">
-                  GRATIS
+                <span className="inline-flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-md tracking-wide">
+                  <Bike className="w-3 h-3" /> RD$ {getDeliveryFee(business)}
                 </span>
                 <span className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
                   <Clock className="w-3 h-3" /> 20-35 min

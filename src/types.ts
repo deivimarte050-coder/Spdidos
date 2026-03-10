@@ -62,6 +62,7 @@ export interface Business {
   status: 'pending' | 'active' | 'inactive';
   openingTime?: string;
   closingTime?: string;
+  deliveryFee?: number;
   weeklySchedule?: Partial<WeeklyBusinessSchedule>;
   menu?: MenuItem[];
   createdAt: string;

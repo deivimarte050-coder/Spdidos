@@ -1,28 +1,35 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShoppingBag, Plus, Minus, Trash2 } from 'lucide-react';
+import { X, ShoppingBag, Plus, Minus, Trash2, Bike } from 'lucide-react';
 import { CartItem } from '../types';
 
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
+  deliveryFee?: number;
   onAdd: (item: any) => void;
   onRemove: (id: string, notes?: string) => void;
   onCheckout: () => void;
   isCheckingOut?: boolean;
+  total?: number;
 }
 
 const CartDrawer: React.FC<CartDrawerProps> = ({ 
   isOpen, 
   onClose, 
   items, 
+  deliveryFee = 50,
   onAdd, 
   onRemove, 
   onCheckout,
-  isCheckingOut = false
+  isCheckingOut = false,
+  total
 }) => {
-  const total = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const subtotal = typeof total === 'number'
+    ? total
+    : items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const finalTotal = subtotal + deliveryFee;
 
   return (
     <AnimatePresence>
@@ -109,15 +116,15 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm text-gray-500">
                     <span>Subtotal</span>
-                    <span>RD$ {total}</span>
+                    <span>RD$ {subtotal}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-500">
                     <span>Envío</span>
-                    <span className="text-emerald-500 font-bold">GRATIS</span>
+                    <span className="text-emerald-500 font-bold inline-flex items-center gap-1"><Bike className="w-3.5 h-3.5" /> RD$ {deliveryFee}</span>
                   </div>
                   <div className="flex justify-between text-xl font-black text-gray-900 pt-2 border-t border-gray-200">
                     <span>Total</span>
-                    <span>RD$ {total}</span>
+                    <span>RD$ {finalTotal}</span>
                   </div>
                 </div>
                 <button 

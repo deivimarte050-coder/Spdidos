@@ -1046,6 +1046,10 @@ function AppContent() {
   };
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const selectedBusinessDeliveryFee = Number(selectedBusiness?.deliveryFee ?? 50);
+  const deliveryFee = Number.isFinite(selectedBusinessDeliveryFee) && selectedBusinessDeliveryFee >= 0
+    ? selectedBusinessDeliveryFee
+    : 50;
   const favoriteBusinessIds = user?.favoriteBusinessIds || [];
   const isCurrentBusinessFavorite = !!selectedBusiness && favoriteBusinessIds.includes(selectedBusiness.id);
   const selectedBusinessMenu = selectedBusiness?.menu || [];
@@ -1344,8 +1348,8 @@ function AppContent() {
           notes: item.notes || ''
         })),
         subtotal: cartTotal,
-        deliveryFee: 50,
-        total: cartTotal + 50,
+        deliveryFee,
+        total: cartTotal + deliveryFee,
         status: 'pending',
         paymentMethod: 'cash',
         deliveryAddress: '',
@@ -2182,6 +2186,7 @@ function AppContent() {
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         items={cart}
+        deliveryFee={deliveryFee}
         onAdd={(item) => addToCart(item.id, item.name, item.price, item.notes)}
         onRemove={removeFromCart}
         onCheckout={handleCheckout}

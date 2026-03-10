@@ -69,6 +69,7 @@ const AdminView: React.FC = () => {
     category: '',
     address: '',
     image: '',
+    deliveryFee: 50,
     password: ''
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -83,6 +84,7 @@ const AdminView: React.FC = () => {
     category: '',
     address: '',
     image: '',
+    deliveryFee: 50,
     password: ''
   });
 
@@ -246,7 +248,7 @@ const AdminView: React.FC = () => {
       
       alert(`✅ Negocio y usuario creados exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\n⚠️ IMPORTANTE: Ahora puedes iniciar sesión con estas credenciales.`);
       
-      setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', image: '', password: '' });
+      setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', image: '', deliveryFee: 50, password: '' });
       setActiveTab('businesses');
     } catch (error: any) {
       console.error('❌ Error completo:', error);
@@ -298,6 +300,7 @@ const AdminView: React.FC = () => {
       category: business.category || '',
       address: business.address || '',
       image: business.image || '',
+      deliveryFee: Number(business.deliveryFee ?? 50),
       password: '' // Dejar en blanco, solo cambiar si se ingresa nueva
     });
   };
@@ -312,6 +315,7 @@ const AdminView: React.FC = () => {
       category: '',
       address: '',
       image: '',
+      deliveryFee: 50,
       password: ''
     });
   };
@@ -331,7 +335,8 @@ const AdminView: React.FC = () => {
         whatsapp: editForm.whatsapp,
         category: editForm.category,
         address: editForm.address,
-        image: editForm.image
+        image: editForm.image,
+        deliveryFee: Number(editForm.deliveryFee) || 0
       };
 
       // Solo actualizar contraseña si se proporcionó una nueva
@@ -682,6 +687,20 @@ const AdminView: React.FC = () => {
                         onChange={(e) => setNewBusiness({...newBusiness, address: e.target.value})}
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
                         placeholder="Calle Principal #123"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Costo de Delivery (RD$)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        required
+                        value={newBusiness.deliveryFee}
+                        onChange={(e) => setNewBusiness({ ...newBusiness, deliveryFee: Number(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        placeholder="50"
                       />
                     </div>
 
@@ -1412,6 +1431,18 @@ const AdminView: React.FC = () => {
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Costo de Delivery (RD$)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={editForm.deliveryFee}
+                      onChange={(e) => setEditForm({ ...editForm, deliveryFee: Number(e.target.value) || 0 })}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
                   </div>
 
                   <div>
