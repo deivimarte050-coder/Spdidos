@@ -414,54 +414,65 @@ const DeliveryView: React.FC = () => {
   };
 
   const earningsData = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const weekStart = getWeekStart(now);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const currentWeekKey = weekStart.toISOString().slice(0, 10);
+    try {
+      const now = new Date();
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const weekStart = getWeekStart(now);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const currentWeekKey = weekStart.toISOString().slice(0, 10);
 
-    let today = 0;
-    let week = 0;
-    let month = 0;
-    const weeklyMap = new Map<string, { total: number; deliveries: number }>();
+      let today = 0;
+      let week = 0;
+      let month = 0;
+      const weeklyMap = new Map<string, { total: number; deliveries: number }>();
 
-    completedOrders.forEach((order) => {
-      const deliveredDate = new Date((order.deliveredAt || order.createdAt) as string);
-      if (!Number.isFinite(deliveredDate.getTime())) return;
+      (Array.isArray(completedOrders) ? completedOrders : []).forEach((order) => {
+        if (!order) return;
+        const deliveredDate = new Date((order.deliveredAt || order.createdAt || '') as string);
+        if (!Number.isFinite(deliveredDate.getTime())) return;
 
-      const earning = getOrderEarning(order);
-      if (deliveredDate >= todayStart) today += earning;
-      if (deliveredDate >= weekStart) week += earning;
-      if (deliveredDate >= monthStart) month += earning;
+        const earning = getOrderEarning(order);
+        if (deliveredDate >= todayStart) today += earning;
+        if (deliveredDate >= weekStart) week += earning;
+        if (deliveredDate >= monthStart) month += earning;
 
-      const orderWeekStart = getWeekStart(deliveredDate);
-      const key = orderWeekStart.toISOString().slice(0, 10);
-      if (key === currentWeekKey) return;
-      const prev = weeklyMap.get(key) || { total: 0, deliveries: 0 };
-      weeklyMap.set(key, { total: prev.total + earning, deliveries: prev.deliveries + 1 });
-    });
+        const orderWeekStart = getWeekStart(deliveredDate);
+        const key = orderWeekStart.toISOString().slice(0, 10);
+        if (key === currentWeekKey) return;
+        const prev = weeklyMap.get(key) || { total: 0, deliveries: 0 };
+        weeklyMap.set(key, { total: prev.total + earning, deliveries: prev.deliveries + 1 });
+      });
 
-    const weeklyHistory = Array.from(weeklyMap.entries())
-      .map(([startKey, value]) => {
-        const start = new Date(`${startKey}T00:00:00`);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        return {
-          startKey,
-          label: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
-          total: value.total,
-          deliveries: value.deliveries,
-        };
-      })
-      .sort((a, b) => (a.startKey < b.startKey ? 1 : -1));
+      const weeklyHistory = Array.from(weeklyMap.entries())
+        .map(([startKey, value]) => {
+          const start = new Date(`${startKey}T00:00:00`);
+          const end = new Date(start);
+          end.setDate(end.getDate() + 6);
+          return {
+            startKey,
+            label: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
+            total: value.total,
+            deliveries: value.deliveries,
+          };
+        })
+        .sort((a, b) => (a.startKey < b.startKey ? 1 : -1));
 
-    return {
-      today,
-      week,
-      month,
-      weeklyHistory,
-    };
+      return {
+        today,
+        week,
+        month,
+        weeklyHistory,
+      };
+    } catch (error) {
+      console.error('Error calculando ganancias del repartidor:', error);
+      return {
+        today: 0,
+        week: 0,
+        month: 0,
+        weeklyHistory: [] as { startKey: string; label: string; total: number; deliveries: number }[],
+      };
+    }
   }, [completedOrders]);
 
   const renderEarningsPanel = () => (
