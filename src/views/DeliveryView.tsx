@@ -414,11 +414,19 @@ const DeliveryView: React.FC = () => {
                     className="text-white font-bold text-sm whitespace-nowrap">
                     Vista general
                   </button>
-                  <button onClick={handleComplete}
-                    style={{ background: '#22c55e', borderRadius: 22, padding: '9px 16px' }}
-                    className="text-white font-bold text-sm flex items-center gap-2 whitespace-nowrap">
-                    <CheckCircle2 className="w-4 h-4" /> Entregado
-                  </button>
+                  {myOrder.status === 'on_the_way' ? (
+                    <button onClick={handleArrive}
+                      style={{ background: '#0d9488', borderRadius: 22, padding: '9px 16px' }}
+                      className="text-white font-bold text-sm flex items-center gap-2 whitespace-nowrap">
+                      <MapPin className="w-4 h-4" /> Ya llegué
+                    </button>
+                  ) : (
+                    <button onClick={handleComplete}
+                      style={{ background: '#22c55e', borderRadius: 22, padding: '9px 16px' }}
+                      className="text-white font-bold text-sm flex items-center gap-2 whitespace-nowrap">
+                      <CheckCircle2 className="w-4 h-4" /> Marcar Entregado
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -426,7 +434,9 @@ const DeliveryView: React.FC = () => {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-5 border-b border-gray-50 flex items-center justify-between">
-                <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase">Entrega en curso</span>
+                <span className={`text-xs font-black px-3 py-1 rounded-full uppercase ${myOrder.status === 'arrived' ? 'text-teal-700 bg-teal-50' : 'text-blue-600 bg-blue-50'}`}>
+                  {myOrder.status === 'arrived' ? '¡Has llegado!' : 'Entrega en curso'}
+                </span>
                 <span className="text-sm font-bold text-gray-400">#{myOrder.id.slice(-6).toUpperCase()}</span>
               </div>
               <div className="p-5 space-y-4">
@@ -471,6 +481,13 @@ const DeliveryView: React.FC = () => {
                   </button>
                 </div>
 
+                {myOrder.status === 'arrived' && (
+                  <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-center space-y-1">
+                    <p className="text-teal-700 font-black text-lg">📍 ¡Llegaste al destino!</p>
+                    <p className="text-teal-600 text-xs">Entrega el pedido al cliente y marca como entregado</p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2">
                   {myOrder.clientWhatsapp && (
                     <a href={`https://wa.me/${myOrder.clientWhatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
@@ -478,18 +495,20 @@ const DeliveryView: React.FC = () => {
                       <MessageCircle className="w-4 h-4" /> WhatsApp
                     </a>
                   )}
-                  {myOrder.status === 'on_the_way' ? (
+                  {myOrder.status === 'on_the_way' && (
                     <button onClick={handleArrive}
                       className={`flex items-center justify-center gap-2 p-3 bg-teal-600 text-white rounded-xl font-bold text-sm ${myOrder.clientWhatsapp ? '' : 'col-span-2'}`}>
                       <MapPin className="w-4 h-4" /> Ya llegué
                     </button>
-                  ) : (
-                    <button onClick={handleComplete}
-                      className={`flex items-center justify-center gap-2 p-3 bg-emerald-600 text-white rounded-xl font-bold text-sm ${myOrder.clientWhatsapp ? '' : 'col-span-2'}`}>
-                      <CheckCircle2 className="w-4 h-4" /> Marcar Entregado
-                    </button>
                   )}
                 </div>
+
+                {myOrder.status === 'arrived' && (
+                  <button onClick={handleComplete}
+                    className="w-full flex items-center justify-center gap-3 p-4 bg-emerald-600 text-white rounded-xl font-black text-lg shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all">
+                    <CheckCircle2 className="w-6 h-6" /> Marcar como Entregado
+                  </button>
+                )}
               </div>
             </motion.div>
           )
