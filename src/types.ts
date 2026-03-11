@@ -102,6 +102,11 @@ export interface MenuItem {
   category?: string;
   image?: string;
   available?: boolean;
+  optionGroupLabel?: string;
+  choiceOptions?: Array<{
+    label: string;
+    price: number;
+  }>;
   drinkSizes?: Array<{
     size: string;
     price: number;

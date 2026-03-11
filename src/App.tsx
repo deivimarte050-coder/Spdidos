@@ -1233,27 +1233,37 @@ function AppContent() {
     const text = normalizeSearchText(`${item.name || ''} ${item.description || ''}`);
     return category.includes('bebida') || text.includes('jugo') || text.includes('refresco') || text.includes('batida');
   };
-  const getDrinkSizeOptionsFromDescription = (item?: MenuItem | null) => {
-    if (!item) return [] as { size: string; price: number | null }[];
+  const getMenuChoiceOptions = (item?: MenuItem | null) => {
+    if (!item) return [] as { label: string; price: number | null }[];
+
+    if ((item.choiceOptions || []).length > 0) {
+      return (item.choiceOptions || [])
+        .filter((option) => option.label && Number.isFinite(option.price) && option.price > 0)
+        .map((option) => ({ label: option.label.trim(), price: option.price }));
+    }
 
     if ((item.drinkSizes || []).length > 0) {
       return (item.drinkSizes || [])
         .filter((size) => size.size && Number.isFinite(size.price) && size.price > 0)
-        .map((size) => ({ size: size.size.trim().toLowerCase(), price: size.price }));
+        .map((size) => ({ label: size.size.trim(), price: size.price }));
+    }
+
+    if (!isDrinkItem(item)) {
+      return [] as { label: string; price: number | null }[];
     }
 
     const description = item.description || '';
-    const optionsWithPrice: { size: string; price: number | null }[] = [];
+    const optionsWithPrice: { label: string; price: number | null }[] = [];
     const seen = new Set<string>();
 
     const sizePriceRegex = /(\d{1,3}\s?(?:oz|ml|l))\s*(?:-|=|:)?\s*(?:rd\$?\s*)?(\d{1,5}(?:\.\d{1,2})?)/gi;
     let match = sizePriceRegex.exec(description);
     while (match) {
-      const size = match[1].replace(/\s+/g, ' ').trim().toLowerCase();
+      const size = match[1].replace(/\s+/g, ' ').trim();
       const price = Number(match[2]);
       if (!seen.has(size)) {
         seen.add(size);
-        optionsWithPrice.push({ size, price: Number.isFinite(price) ? price : null });
+        optionsWithPrice.push({ label: size, price: Number.isFinite(price) ? price : null });
       }
       match = sizePriceRegex.exec(description);
     }
@@ -1261,10 +1271,10 @@ function AppContent() {
     const sizeOnlyRegex = /\b\d{1,3}\s?(oz|ml|l)\b/gi;
     const sizeOnlyMatches = description.match(sizeOnlyRegex) || [];
     sizeOnlyMatches.forEach((rawSize) => {
-      const size = rawSize.replace(/\s+/g, ' ').trim().toLowerCase();
+      const size = rawSize.replace(/\s+/g, ' ').trim();
       if (!seen.has(size)) {
         seen.add(size);
-        optionsWithPrice.push({ size, price: null });
+        optionsWithPrice.push({ label: size, price: null });
       }
     });
 
@@ -2046,10 +2056,11 @@ function AppContent() {
                 {selectedMenuItem && (
                   (() => {
                     const isDrink = isDrinkItem(selectedMenuItem);
-                    const drinkSizeOptions = getDrinkSizeOptionsFromDescription(selectedMenuItem);
-                    const activeDrinkSize = selectedDrinkSize || drinkSizeOptions[0]?.size || null;
-                    const activeDrinkOption = drinkSizeOptions.find((opt) => opt.size === activeDrinkSize) || null;
-                    const selectedPrice = activeDrinkOption?.price ?? selectedMenuItem.price;
+                    const choiceOptions = getMenuChoiceOptions(selectedMenuItem);
+                    const activeChoiceLabel = selectedDrinkSize || choiceOptions[0]?.label || null;
+                    const activeChoiceOption = choiceOptions.find((opt) => opt.label === activeChoiceLabel) || null;
+                    const selectedPrice = activeChoiceOption?.price ?? selectedMenuItem.price;
+                    const optionGroupLabel = selectedMenuItem.optionGroupLabel || (isDrink ? 'Tamaño' : 'Sabor');
                     return (
                   <motion.div
                     initial={{ opacity: 0 }}
@@ -2102,26 +2113,25 @@ function AppContent() {
                           <p className="text-3xl font-black text-gray-900 mt-4">RD$ {selectedPrice}</p>
                         </div>
 
-                        {isDrink && (
+                        {choiceOptions.length > 0 && (
                           <div className="border-t border-gray-100 pt-4">
                             <div className="flex items-center justify-between">
-                              <p className="text-2xl font-black text-gray-900">Tamaño</p>
+                              <p className="text-2xl font-black text-gray-900">Elige una opción</p>
                               <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-bold">Requerido</span>
                             </div>
-                            <p className="text-gray-500 mt-1">Elige 1 opción</p>
 
                             <div className="mt-3 space-y-2">
-                              {(drinkSizeOptions.length > 0 ? drinkSizeOptions : [{ size: '16 oz', price: null }]).map((option) => {
-                                const sizeOption = option.size;
-                                const isSelected = (selectedDrinkSize || drinkSizeOptions[0]?.size || '16 oz') === sizeOption;
+                              {choiceOptions.map((option) => {
+                                const optionLabel = option.label;
+                                const isSelected = (selectedDrinkSize || choiceOptions[0]?.label) === optionLabel;
                                 return (
                                   <button
-                                    key={sizeOption}
+                                    key={optionLabel}
                                     type="button"
-                                    onClick={() => setSelectedDrinkSize(sizeOption)}
+                                    onClick={() => setSelectedDrinkSize(optionLabel)}
                                     className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200'}`}
                                   >
-                                    <span className="font-semibold text-gray-800 uppercase">{sizeOption}</span>
+                                    <span className="font-semibold text-gray-800 uppercase">{optionLabel}</span>
                                     <span className="text-sm font-bold text-gray-500">{option.price ? `RD$ ${option.price}` : ''}</span>
                                     <div className={`w-5 h-5 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-gray-300'}`} />
                                   </button>
@@ -2176,11 +2186,11 @@ function AppContent() {
                               return;
                             }
 
-                            const selectedName = isDrink && activeDrinkSize
-                              ? `${selectedMenuItem.name} (${activeDrinkSize.toUpperCase()})`
+                            const selectedName = activeChoiceLabel
+                              ? `${selectedMenuItem.name} (${activeChoiceLabel.toUpperCase()})`
                               : selectedMenuItem.name;
-                            const selectedId = isDrink && activeDrinkSize
-                              ? `${selectedMenuItem.id}-${activeDrinkSize}`
+                            const selectedId = activeChoiceLabel
+                              ? `${selectedMenuItem.id}-${activeChoiceLabel}`
                               : selectedMenuItem.id;
                             for (let i = 0; i < modalQuantity; i++) {
                               addToCart(selectedId, selectedName, selectedPrice, modalNotes);

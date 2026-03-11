@@ -15,14 +15,20 @@ interface MenuItem {
   image: string;
   isActive: boolean;
   isAvailable: boolean;
+  optionGroupLabel?: string;
+  choiceOptions?: Array<{
+    label: string;
+    price: number;
+  }>;
   drinkSizes?: Array<{
     size: string;
     price: number;
   }>;
 }
 
-const defaultDrinkSize = { size: '', price: 0 };
+const defaultChoiceOption = { label: '', price: 0 };
 const presetSizes = ['Pequeño', 'Mediano', 'Grande', '12 oz', '16 oz', '24 oz'];
+const presetFlavors = ['Pollo', 'Cerdo', 'Res', 'Queso', 'Jamón', 'Mixta'];
 
 const MenuManager: React.FC = () => {
   const { user } = useAuth();
@@ -41,16 +47,17 @@ const MenuManager: React.FC = () => {
     image: '',
     isActive: true,
     isAvailable: true,
+    optionGroupLabel: 'Sabor',
+    choiceOptions: [],
     drinkSizes: []
   });
 
   const categories = ['Platos Típicos', 'Pizzas', 'Bebidas', 'Postres', 'Ensaladas', 'Sopas'];
   const isDrinkCategory = (category?: string) => (category || '').toLowerCase().includes('bebida');
-  const sanitizeDrinkSizes = (drinkSizes?: Array<{ size: string; price: number }>) =>
-    (drinkSizes || [])
-      .filter((size) => size.size.trim() && Number.isFinite(size.price) && size.price > 0)
-      .map((size) => ({ size: size.size.trim().toLowerCase(), price: size.price }));
-
+  const sanitizeChoiceOptions = (choiceOptions?: Array<{ label: string; price: number }>) =>
+    (choiceOptions || [])
+      .filter((option) => option.label.trim() && Number.isFinite(option.price) && option.price > 0)
+      .map((option) => ({ label: option.label.trim(), price: option.price }));
   // Cargar menú del negocio actual desde Firebase
   useEffect(() => {
     const loadMenu = async () => {
@@ -72,6 +79,11 @@ const MenuManager: React.FC = () => {
                 image: item.image || 'https://picsum.photos/seed/default/300/200',
                 isActive: item.available !== false,
                 isAvailable: item.available !== false,
+                optionGroupLabel: String(item.optionGroupLabel || (isDrinkCategory(item.category) ? 'Tamaño' : 'Sabor')),
+                choiceOptions: (item.choiceOptions || item.drinkSizes || []).map((option: any) => ({
+                  label: String(option?.label || option?.size || '').trim(),
+                  price: Number(option?.price) || 0,
+                })),
                 drinkSizes: item.drinkSizes || []
               }));
               setMenuItems(convertedMenu);
@@ -120,7 +132,13 @@ const MenuManager: React.FC = () => {
         plain.category = '' + (item.category || '');
         plain.image = '' + (item.image || '');
         plain.available = !!(item.isAvailable !== false && item.isActive !== false);
-        // NO incluir drinkSizes — eliminado temporalmente para diagnosticar
+        const choiceOptions = sanitizeChoiceOptions(item.choiceOptions);
+        plain.optionGroupLabel = String(item.optionGroupLabel || (isDrinkCategory(item.category) ? 'Tamaño' : 'Sabor'));
+        plain.choiceOptions = choiceOptions;
+        plain.drinkSizes = choiceOptions.map((option) => ({
+          size: option.label,
+          price: option.price,
+        }));
         cleanMenu.push(plain);
       }
 
@@ -133,7 +151,7 @@ const MenuManager: React.FC = () => {
         throw new Error('PASO1_FALLO: No se puede escribir a Firestore: ' + (testErr?.message || testErr));
       }
 
-      // Paso 2: Escribir el menú limpio (sin drinkSizes)
+      // Paso 2: Escribir el menú limpio
       try {
         await updateDoc(businessRef, { menu: cleanMenu });
       } catch (menuErr: any) {
@@ -189,6 +207,7 @@ const MenuManager: React.FC = () => {
 
   const handleAddNew = () => {
     if (newItem.name && newItem.price && newItem.category) {
+      const normalizedChoiceOptions = sanitizeChoiceOptions(newItem.choiceOptions);
       const item: MenuItem = {
         id: Date.now().toString(),
         name: newItem.name,
@@ -198,7 +217,9 @@ const MenuManager: React.FC = () => {
         image: newItem.image || 'https://picsum.photos/seed/default/300/200',
         isActive: newItem.isActive || true,
         isAvailable: newItem.isAvailable || true,
-        drinkSizes: isDrinkCategory(newItem.category) ? sanitizeDrinkSizes(newItem.drinkSizes) : []
+        optionGroupLabel: String(newItem.optionGroupLabel || (isDrinkCategory(newItem.category) ? 'Tamaño' : 'Sabor')),
+        choiceOptions: normalizedChoiceOptions,
+        drinkSizes: normalizedChoiceOptions.map((option) => ({ size: option.label, price: option.price }))
       };
       const updatedMenu = [...menuItems, item];
       setMenuItems(updatedMenu);
@@ -211,43 +232,45 @@ const MenuManager: React.FC = () => {
         image: '',
         isActive: true,
         isAvailable: true,
+        optionGroupLabel: 'Sabor',
+        choiceOptions: [],
         drinkSizes: []
       });
       setIsAddingNew(false);
     }
   };
 
-  const addDrinkSizeToNew = () => {
-    setNewItem((prev) => ({ ...prev, drinkSizes: [...(prev.drinkSizes || []), { ...defaultDrinkSize }] }));
+  const addChoiceOptionToNew = () => {
+    setNewItem((prev) => ({ ...prev, choiceOptions: [...(prev.choiceOptions || []), { ...defaultChoiceOption }] }));
   };
 
-  const updateDrinkSizeOnNew = (index: number, patch: Partial<{ size: string; price: number }>) => {
+  const updateChoiceOptionOnNew = (index: number, patch: Partial<{ label: string; price: number }>) => {
     setNewItem((prev) => ({
       ...prev,
-      drinkSizes: (prev.drinkSizes || []).map((size, idx) => (idx === index ? { ...size, ...patch } : size)),
+      choiceOptions: (prev.choiceOptions || []).map((option, idx) => (idx === index ? { ...option, ...patch } : option)),
     }));
   };
 
-  const removeDrinkSizeOnNew = (index: number) => {
-    setNewItem((prev) => ({ ...prev, drinkSizes: (prev.drinkSizes || []).filter((_, idx) => idx !== index) }));
+  const removeChoiceOptionOnNew = (index: number) => {
+    setNewItem((prev) => ({ ...prev, choiceOptions: (prev.choiceOptions || []).filter((_, idx) => idx !== index) }));
   };
 
-  const addDrinkSizeToEdit = () => {
+  const addChoiceOptionToEdit = () => {
     if (!editingItem) return;
-    setEditingItem({ ...editingItem, drinkSizes: [...(editingItem.drinkSizes || []), { ...defaultDrinkSize }] });
+    setEditingItem({ ...editingItem, choiceOptions: [...(editingItem.choiceOptions || []), { ...defaultChoiceOption }] });
   };
 
-  const updateDrinkSizeOnEdit = (index: number, patch: Partial<{ size: string; price: number }>) => {
+  const updateChoiceOptionOnEdit = (index: number, patch: Partial<{ label: string; price: number }>) => {
     if (!editingItem) return;
     setEditingItem({
       ...editingItem,
-      drinkSizes: (editingItem.drinkSizes || []).map((size, idx) => (idx === index ? { ...size, ...patch } : size)),
+      choiceOptions: (editingItem.choiceOptions || []).map((option, idx) => (idx === index ? { ...option, ...patch } : option)),
     });
   };
 
-  const removeDrinkSizeOnEdit = (index: number) => {
+  const removeChoiceOptionOnEdit = (index: number) => {
     if (!editingItem) return;
-    setEditingItem({ ...editingItem, drinkSizes: (editingItem.drinkSizes || []).filter((_, idx) => idx !== index) });
+    setEditingItem({ ...editingItem, choiceOptions: (editingItem.choiceOptions || []).filter((_, idx) => idx !== index) });
   };
 
   const handleDelete = (id: string) => {
@@ -343,7 +366,11 @@ const MenuManager: React.FC = () => {
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Categoría</label>
                 <select
                   value={newItem.category}
-                  onChange={(e) => setNewItem({ ...newItem, category: e.target.value, drinkSizes: isDrinkCategory(e.target.value) ? (newItem.drinkSizes || []) : [] })}
+                  onChange={(e) => setNewItem({
+                    ...newItem,
+                    category: e.target.value,
+                    optionGroupLabel: isDrinkCategory(e.target.value) ? 'Tamaño' : 'Sabor'
+                  })}
                   className="w-full mt-1 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20"
                 >
                   <option value="">Seleccionar categoría</option>
@@ -372,64 +399,74 @@ const MenuManager: React.FC = () => {
               </div>
             </div>
 
-            {isDrinkCategory(newItem.category) && (
-              <div className="space-y-3 bg-blue-50/60 border border-blue-200 rounded-xl p-4">
+            <div className="space-y-3 bg-blue-50/60 border border-blue-200 rounded-xl p-4">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-blue-700 uppercase tracking-widest">🥤 Tamaños de bebida</label>
+                  <label className="text-xs font-bold text-blue-700 uppercase tracking-widest">Opciones del producto</label>
                   <button
                     type="button"
-                    onClick={addDrinkSizeToNew}
+                    onClick={addChoiceOptionToNew}
                     className="text-xs font-bold text-primary hover:underline"
                   >
-                    + Agregar tamaño personalizado
+                    + Agregar opción
                   </button>
                 </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Nombre del grupo</label>
+                  <input
+                    type="text"
+                    value={newItem.optionGroupLabel || ''}
+                    onChange={(e) => setNewItem({ ...newItem, optionGroupLabel: e.target.value })}
+                    className="w-full mt-1 p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                    placeholder="Ej: Sabor, Tamaño"
+                  />
+                </div>
                 <div className="flex flex-wrap gap-2">
-                  {presetSizes.filter(ps => !(newItem.drinkSizes || []).some(ds => ds.size.toLowerCase() === ps.toLowerCase())).map(ps => (
+                  {(isDrinkCategory(newItem.category) ? presetSizes : presetFlavors)
+                    .filter((preset) => !(newItem.choiceOptions || []).some((option) => option.label.toLowerCase() === preset.toLowerCase()))
+                    .map((preset) => (
                     <button
-                      key={ps}
+                      key={preset}
                       type="button"
-                      onClick={() => setNewItem(prev => ({ ...prev, drinkSizes: [...(prev.drinkSizes || []), { size: ps, price: 0 }] }))}
+                      onClick={() => setNewItem(prev => ({ ...prev, choiceOptions: [...(prev.choiceOptions || []), { label: preset, price: prev.price || 0 }] }))}
                       className="text-xs px-3 py-1.5 rounded-full border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
                     >
-                      + {ps}
+                      + {preset}
                     </button>
                   ))}
                 </div>
-                {(newItem.drinkSizes || []).map((size, idx) => (
+                {(newItem.choiceOptions || []).map((option, idx) => (
                   <div key={`new-size-${idx}`} className="grid grid-cols-[1fr_130px_auto] gap-2 items-center">
                     <input
                       type="text"
-                      value={size.size}
-                      onChange={(e) => updateDrinkSizeOnNew(idx, { size: e.target.value })}
+                      value={option.label}
+                      onChange={(e) => updateChoiceOptionOnNew(idx, { label: e.target.value })}
                       className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
-                      placeholder="Ej: Grande, 16 oz"
+                      placeholder="Ej: Pollo, Res, Grande"
                     />
                     <div className="relative">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">RD$</span>
                       <input
                         type="number"
                         min={0}
-                        value={size.price || ''}
-                        onChange={(e) => updateDrinkSizeOnNew(idx, { price: parseFloat(e.target.value) || 0 })}
+                        value={option.price || ''}
+                        onChange={(e) => updateChoiceOptionOnNew(idx, { price: parseFloat(e.target.value) || 0 })}
                         className="w-full pl-9 pr-2 py-2 border border-gray-200 rounded-lg text-sm bg-white"
                         placeholder="0"
                       />
                     </div>
                     <button
                       type="button"
-                      onClick={() => removeDrinkSizeOnNew(idx)}
+                      onClick={() => removeChoiceOptionOnNew(idx)}
                       className="px-3 py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
-                {(newItem.drinkSizes || []).length === 0 && (
-                  <p className="text-xs text-blue-400 italic">Agrega al menos un tamaño con su precio para que el cliente pueda elegir.</p>
+                {(newItem.choiceOptions || []).length === 0 && (
+                  <p className="text-xs text-blue-400 italic">Agrega opciones como sabores o tamaños para que el cliente elija 1.</p>
                 )}
               </div>
-            )}
 
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Descripción</label>
@@ -517,7 +554,11 @@ const MenuManager: React.FC = () => {
                     />
                     <select
                       value={editingItem.category}
-                      onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value, drinkSizes: isDrinkCategory(e.target.value) ? (editingItem.drinkSizes || []) : [] })}
+                      onChange={(e) => setEditingItem({
+                        ...editingItem,
+                        category: e.target.value,
+                        optionGroupLabel: editingItem.optionGroupLabel || (isDrinkCategory(e.target.value) ? 'Tamaño' : 'Sabor')
+                      })}
                       className="p-2 border border-gray-200 rounded-lg text-sm"
                     >
                       {categories.map(cat => (
@@ -533,51 +574,58 @@ const MenuManager: React.FC = () => {
                     rows={2}
                   />
 
-                  {isDrinkCategory(editingItem.category) && (
-                    <div className="space-y-2 bg-blue-50/60 border border-blue-200 rounded-xl p-3">
+                  <div className="space-y-2 bg-blue-50/60 border border-blue-200 rounded-xl p-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-blue-700 uppercase">🥤 Tamaños</p>
-                        <button type="button" onClick={addDrinkSizeToEdit} className="text-xs font-bold text-primary hover:underline">+ Personalizado</button>
+                        <p className="text-xs font-bold text-blue-700 uppercase">Opciones</p>
+                        <button type="button" onClick={addChoiceOptionToEdit} className="text-xs font-bold text-primary hover:underline">+ Opción</button>
                       </div>
+                      <input
+                        type="text"
+                        value={editingItem.optionGroupLabel || ''}
+                        onChange={(e) => setEditingItem({ ...editingItem, optionGroupLabel: e.target.value })}
+                        className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                        placeholder="Nombre del grupo: Sabor o Tamaño"
+                      />
                       <div className="flex flex-wrap gap-1.5">
-                        {presetSizes.filter(ps => !(editingItem.drinkSizes || []).some(ds => ds.size.toLowerCase() === ps.toLowerCase())).map(ps => (
+                        {(isDrinkCategory(editingItem.category) ? presetSizes : presetFlavors)
+                          .filter((preset) => !(editingItem.choiceOptions || []).some((option) => option.label.toLowerCase() === preset.toLowerCase()))
+                          .map((preset) => (
                           <button
-                            key={ps}
+                            key={preset}
                             type="button"
-                            onClick={() => setEditingItem({ ...editingItem, drinkSizes: [...(editingItem.drinkSizes || []), { size: ps, price: 0 }] })}
+                            onClick={() => setEditingItem({ ...editingItem, choiceOptions: [...(editingItem.choiceOptions || []), { label: preset, price: editingItem.price || 0 }] })}
                             className="text-[11px] px-2 py-1 rounded-full border border-dashed border-blue-300 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
                           >
-                            + {ps}
+                            + {preset}
                           </button>
                         ))}
                       </div>
-                      {(editingItem.drinkSizes || []).map((size, idx) => (
+                      {(editingItem.choiceOptions || []).map((option, idx) => (
                         <div key={`edit-size-${idx}`} className="grid grid-cols-[1fr_110px_auto] gap-2 items-center">
                           <input
                             type="text"
-                            value={size.size}
-                            onChange={(e) => updateDrinkSizeOnEdit(idx, { size: e.target.value })}
+                            value={option.label}
+                            onChange={(e) => updateChoiceOptionOnEdit(idx, { label: e.target.value })}
                             className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
-                            placeholder="Ej: Grande"
+                            placeholder="Ej: Cerdo"
                           />
                           <div className="relative">
                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">RD$</span>
                             <input
                               type="number"
                               min={0}
-                              value={size.price || ''}
-                              onChange={(e) => updateDrinkSizeOnEdit(idx, { price: parseFloat(e.target.value) || 0 })}
+                              value={option.price || ''}
+                              onChange={(e) => updateChoiceOptionOnEdit(idx, { price: parseFloat(e.target.value) || 0 })}
                               className="w-full pl-9 pr-2 py-2 border border-gray-200 rounded-lg text-sm bg-white"
                               placeholder="0"
                             />
                           </div>
-                          <button type="button" onClick={() => removeDrinkSizeOnEdit(idx)} className="px-2 py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100">
+                          <button type="button" onClick={() => removeChoiceOptionOnEdit(idx)} className="px-2 py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       ))}
                     </div>
-                  )}
                 </div>
               ) : (
                 // Modo vista
@@ -623,9 +671,9 @@ const MenuManager: React.FC = () => {
                       <span className="font-bold text-primary text-sm">RD$ {item.price}</span>
                     </div>
                     <p className="text-xs text-gray-500 mb-3 line-clamp-2">{item.description}</p>
-                    {isDrinkCategory(item.category) && (item.drinkSizes || []).length > 0 && (
+                    {(item.choiceOptions || []).length > 0 && (
                       <p className="text-[11px] text-gray-400 mb-3">
-                        Tamaños: {(item.drinkSizes || []).map((size) => `${size.size.toUpperCase()} RD$${size.price}`).join(' · ')}
+                        {item.optionGroupLabel || 'Opciones'}: {(item.choiceOptions || []).map((option) => `${option.label.toUpperCase()} RD$${option.price}`).join(' · ')}
                       </p>
                     )}
                     
