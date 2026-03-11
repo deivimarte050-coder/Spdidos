@@ -1031,12 +1031,9 @@ function AppContent() {
         }
       }
 
-      const cancelledByClient = data.filter((o) => {
-        if (o.status !== 'cancelled') return false;
-        if ((o as any).cancelledByClient === true) return true;
-        const reason = String((o as any).cancellationReason || '').toLowerCase();
-        return reason.includes('cliente');
-      });
+      const cancelledByClient = data.filter((o) =>
+        o.status === 'cancelled' && (o as any).cancelledByClient === true
+      );
 
       if (!bizCancelledInited.current) {
         cancelledByClient.forEach((o) => bizCancelledNotifiedIds.current.add(o.id));
@@ -1087,7 +1084,14 @@ function AppContent() {
     bizShowingModal.current = false;
     const order = incomingOrder;
     setIncomingOrder(null);
-    try { await FirebaseServiceV2.updateOrder(order.id, { status: 'cancelled' }); }
+    try {
+      await FirebaseServiceV2.updateOrder(order.id, {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        cancelledByClient: false,
+        cancellationReason: 'Cancelado por negocio'
+      });
+    }
     catch (err) { console.error('Error rechazando pedido:', err); }
   };
 
