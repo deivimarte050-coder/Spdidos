@@ -546,8 +546,8 @@ const TrackingView: React.FC<{
         </div>
       )}
 
-      {/* Mapa cuando el repartidor está en camino */}
-      {order?.status === 'on_the_way' && deliveryLocation && (() => {
+      {/* Mapa cuando el pedido está listo o en reparto */}
+      {order && ['ready', 'on_the_way', 'arrived'].includes(order.status) && deliveryLocation && (() => {
         const clientCoords = getClientCoords();
         const clientPos: [number, number] | null = clientCoords ? [clientCoords.lat, clientCoords.lng] : null;
         const routePositions: [number, number][] = clientPos ? [deliverPos, clientPos] : [];
@@ -1125,15 +1125,26 @@ function AppContent() {
     setArrivedOrderId(null);
   };
 
-  // Subscribe to delivery location when order is on the way
+  // Subscribe to delivery location only once order is ready (or later)
   useEffect(() => {
     if (deliveryUnsubRef.current) { deliveryUnsubRef.current(); deliveryUnsubRef.current = null; }
-    if (!activeOrderId) return;
+    if (!activeOrderId) {
+      setDeliveryLocation(null);
+      return;
+    }
+    const activeTrackedOrder = activeOrders.find((o) => o.id === activeOrderId);
+    const canTrackDelivery = activeTrackedOrder
+      ? ['ready', 'on_the_way', 'arrived'].includes(activeTrackedOrder.status)
+      : false;
+    if (!canTrackDelivery) {
+      setDeliveryLocation(null);
+      return;
+    }
     deliveryUnsubRef.current = FirebaseServiceV2.subscribeToDeliveryLocation(activeOrderId, (loc) => {
       setDeliveryLocation(loc);
     });
     return () => { if (deliveryUnsubRef.current) deliveryUnsubRef.current(); };
-  }, [activeOrderId]);
+  }, [activeOrderId, activeOrders]);
 
   useEffect(() => {
     const loadBusinesses = async () => {
