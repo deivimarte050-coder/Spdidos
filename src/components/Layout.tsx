@@ -11,6 +11,8 @@ interface LayoutProps {
   onViewChange: (view: any) => void;
   cartCount: number;
   onCartClick: () => void;
+  showInstallAppButton?: boolean;
+  onInstallAppClick?: () => void;
   showCartHint?: boolean;
   onCartHintDismiss?: () => void;
   orderCount?: number;
@@ -31,6 +33,8 @@ const Layout: React.FC<LayoutProps> = ({
   onViewChange,
   cartCount,
   onCartClick,
+  showInstallAppButton = false,
+  onInstallAppClick,
   showCartHint = false,
   onCartHintDismiss,
   orderCount = 0,
@@ -105,9 +109,16 @@ const Layout: React.FC<LayoutProps> = ({
               Toca el carrito para confirmar y pagar
             </motion.button>
           )}
-          <button className="relative p-2.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
-            <MonitorSmartphone className="w-5 h-5" />
-          </button>
+          {showInstallAppButton && (
+            <button
+              onClick={onInstallAppClick}
+              className="flex items-center gap-2 px-3 py-2 rounded-full bg-primary text-white text-xs font-black hover:bg-primary/90 transition-colors"
+              title="Instalar App"
+            >
+              <MonitorSmartphone className="w-4 h-4" />
+              Instalar App
+            </button>
+          )}
           <button
             onClick={() => onNotificationBellClick?.()}
             className={`relative p-2.5 rounded-full text-gray-500 transition-colors ${hasUnreadNotificationAlert ? 'bg-amber-50 ring-2 ring-amber-300 animate-pulse' : 'bg-gray-50 hover:bg-gray-100'}`}
@@ -172,6 +183,16 @@ const Layout: React.FC<LayoutProps> = ({
             >
               👆 Dale al carrito para confirmar y pagar
             </motion.button>
+          )}
+          {showInstallAppButton && (
+            <button
+              onClick={onInstallAppClick}
+              className="flex items-center gap-1.5 px-2.5 py-2 rounded-full bg-primary text-white text-[11px] font-black"
+              title="Instalar App"
+            >
+              <MonitorSmartphone className="w-4 h-4" />
+              Instalar App
+            </button>
           )}
           <button
             onClick={() => onNotificationBellClick?.()}

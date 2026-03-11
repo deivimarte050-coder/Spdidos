@@ -20,6 +20,16 @@ import { soundService } from './services/SoundService';
 import { initFCMToken, listenFCMForeground } from './services/FCMService';
 import { LOGO_URL, SPM_CENTER } from './constants';
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
+
+const isStandaloneDisplayMode = () => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+};
+
 const ORDER_STEPS = [
   { status: 'pending',    label: 'Pedido recibido',   icon: Package },
   { status: 'accepted',   label: 'Aceptado',           icon: CheckCircle2 },
@@ -774,6 +784,9 @@ function AppContent() {
   const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
   const [pendingSharedTarget, setPendingSharedTarget] = useState<{ businessId: string; itemId?: string; imageUrl?: string } | null>(null);
   const [forceAuthForSharedOrder, setForceAuthForSharedOrder] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [canInstallApp, setCanInstallApp] = useState(false);
+  const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(() => isStandaloneDisplayMode());
   const sharedAuthNoticeShownRef = useRef(false);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -811,6 +824,22 @@ function AppContent() {
     persistNotificationAlert(false);
   };
 
+  const handleInstallApp = async () => {
+    if (!deferredInstallPrompt) {
+      alert('La instalación aún no está disponible en este dispositivo o navegador.');
+      return;
+    }
+    try {
+      await deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+    } catch {
+      // ignore prompt errors
+    } finally {
+      setDeferredInstallPrompt(null);
+      setCanInstallApp(false);
+    }
+  };
+
   useEffect(() => {
     if (!user?.id || user.role !== 'client') {
       setHasUnreadNotificationAlert(false);
@@ -823,6 +852,46 @@ function AppContent() {
       setHasUnreadNotificationAlert(false);
     }
   }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+      setCanInstallApp(true);
+    };
+    const onAppInstalled = () => {
+      setIsStandaloneMode(true);
+      setDeferredInstallPrompt(null);
+      setCanInstallApp(false);
+    };
+    const onDisplayModeChange = () => {
+      const standalone = isStandaloneDisplayMode();
+      setIsStandaloneMode(standalone);
+      if (standalone) setCanInstallApp(false);
+    };
+
+    const displayModeMedia = window.matchMedia('(display-mode: standalone)');
+
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt as EventListener);
+    window.addEventListener('appinstalled', onAppInstalled);
+    if (displayModeMedia.addEventListener) {
+      displayModeMedia.addEventListener('change', onDisplayModeChange);
+    } else {
+      displayModeMedia.addListener(onDisplayModeChange);
+    }
+
+    onDisplayModeChange();
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt as EventListener);
+      window.removeEventListener('appinstalled', onAppInstalled);
+      if (displayModeMedia.removeEventListener) {
+        displayModeMedia.removeEventListener('change', onDisplayModeChange);
+      } else {
+        displayModeMedia.removeListener(onDisplayModeChange);
+      }
+    };
+  }, []);
 
   // ── FCM: register SW, request permission, get token, start foreground listener
   useEffect(() => {
@@ -1678,6 +1747,8 @@ function AppContent() {
       onViewChange={setView}
       cartCount={cart.reduce((a, b) => a + b.quantity, 0)}
       onCartClick={() => setIsCartOpen(true)}
+      showInstallAppButton={canInstallApp && !isStandaloneMode}
+      onInstallAppClick={handleInstallApp}
       showCartHint={showCartHint}
       onCartHintDismiss={() => setShowCartHint(false)}
       orderCount={activeOrders.length}
