@@ -2076,28 +2076,41 @@ function AppContent() {
               {selectedBusinessMenu.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {filteredMenuItems.map((item: any) => (
-                      <div key={item.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => {
+                      <div
+                        key={item.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          setSelectedMenuItem(item);
+                          setSelectedDrinkSize(null);
+                          setModalQuantity(0);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
                             setSelectedMenuItem(item);
                             setSelectedDrinkSize(null);
                             setModalQuantity(0);
-                          }}
-                          className="relative h-32 md:h-40 overflow-hidden w-full text-left"
-                        >
+                          }
+                        }}
+                        className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm cursor-pointer"
+                      >
+                        <div className="relative h-32 md:h-40 overflow-hidden w-full text-left">
                           <img
                             src={item.image || 'https://picsum.photos/seed/food/300/200'}
                             alt={item.name}
                             className="w-full h-full object-cover"
                           />
-                        </button>
+                        </div>
                         <div className="p-3">
                           <div className="flex items-start justify-between gap-2">
                             <h5 className="font-bold text-gray-900 text-[15px] leading-tight line-clamp-2">{item.name}</h5>
                             <button
                               type="button"
-                              onClick={() => handleShareMenuItem(selectedBusiness, item as MenuItem)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleShareMenuItem(selectedBusiness, item as MenuItem);
+                              }}
                               className="w-8 h-8 rounded-full border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-50"
                               title="Compartir artículo"
                             >
