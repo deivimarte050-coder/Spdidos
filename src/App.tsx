@@ -768,6 +768,7 @@ function AppContent() {
   const [selectedDrinkSize, setSelectedDrinkSize] = useState<string | null>(null);
   const [modalNotes, setModalNotes] = useState('');
   const [modalQuantity, setModalQuantity] = useState(0);
+  const [modalOptionQuantities, setModalOptionQuantities] = useState<Record<string, number>>({});
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
   const [selectedTransferAccountIndex, setSelectedTransferAccountIndex] = useState(0);
@@ -1166,6 +1167,7 @@ function AppContent() {
         setSelectedDrinkSize(null);
         setModalNotes('');
         setModalQuantity(1);
+        setModalOptionQuantities({});
       }
     }
 
@@ -2099,6 +2101,7 @@ function AppContent() {
                           setSelectedMenuItem(item);
                           setSelectedDrinkSize(null);
                           setModalQuantity(0);
+                          setModalOptionQuantities({});
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
@@ -2106,6 +2109,7 @@ function AppContent() {
                             setSelectedMenuItem(item);
                             setSelectedDrinkSize(null);
                             setModalQuantity(0);
+                            setModalOptionQuantities({});
                           }
                         }}
                         className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm cursor-pointer"
@@ -2163,6 +2167,12 @@ function AppContent() {
                     const activeChoiceLabel = selectedDrinkSize || choiceOptions[0]?.label || null;
                     const activeChoiceOption = choiceOptions.find((opt) => opt.label === activeChoiceLabel) || null;
                     const selectedPrice = activeChoiceOption?.price ?? selectedMenuItem.price;
+                    const optionQuantitiesTotal = choiceOptions.reduce((acc, option) => acc + (modalOptionQuantities[option.label] || 0), 0);
+                    const selectedOptionQuantity = activeChoiceLabel ? (modalOptionQuantities[activeChoiceLabel] || 0) : 0;
+                    const modalTotalQuantity = choiceOptions.length > 0 ? optionQuantitiesTotal : modalQuantity;
+                    const modalTotalPrice = choiceOptions.length > 0
+                      ? choiceOptions.reduce((acc, option) => acc + ((modalOptionQuantities[option.label] || 0) * option.price), 0)
+                      : selectedPrice * modalQuantity;
                     const optionGroupLabel = selectedMenuItem.optionGroupLabel || (isDrink ? 'Tamaño' : 'Sabor');
                     return (
                   <motion.div
@@ -2174,6 +2184,7 @@ function AppContent() {
                       setSelectedMenuItem(null);
                       setSelectedDrinkSize(null);
                       setModalNotes('');
+                      setModalOptionQuantities({});
                     }}
                   >
                     <motion.div
@@ -2196,6 +2207,7 @@ function AppContent() {
                             setSelectedMenuItem(null);
                             setSelectedDrinkSize(null);
                             setModalNotes('');
+                            setModalOptionQuantities({});
                           }}
                           className="absolute top-4 left-4 w-10 h-10 rounded-full bg-white/90 text-gray-700 flex items-center justify-center"
                         >
@@ -2227,6 +2239,7 @@ function AppContent() {
                               {choiceOptions.map((option) => {
                                 const optionLabel = option.label;
                                 const isSelected = (selectedDrinkSize || choiceOptions[0]?.label) === optionLabel;
+                                const optionQty = modalOptionQuantities[optionLabel] || 0;
                                 return (
                                   <button
                                     key={optionLabel}
@@ -2235,8 +2248,13 @@ function AppContent() {
                                     className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200'}`}
                                   >
                                     <span className="font-semibold text-gray-800 uppercase">{optionLabel}</span>
-                                    <span className="text-sm font-bold text-gray-500">{option.price ? `RD$ ${option.price}` : ''}</span>
-                                    <div className={`w-5 h-5 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-gray-300'}`} />
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-sm font-bold text-gray-500">{option.price ? `RD$ ${option.price}` : ''}</span>
+                                      <span className={`text-xs font-black px-2 py-0.5 rounded-full ${optionQty > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                        x{optionQty}
+                                      </span>
+                                      <div className={`w-5 h-5 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-gray-300'}`} />
+                                    </div>
                                   </button>
                                 );
                               })}
@@ -2267,15 +2285,35 @@ function AppContent() {
                         <div className="flex items-center justify-center gap-5">
                           <button
                             type="button"
-                            onClick={() => setModalQuantity(q => Math.max(0, q - 1))}
+                            onClick={() => {
+                              if (choiceOptions.length > 0 && activeChoiceLabel) {
+                                setModalOptionQuantities((prev) => ({
+                                  ...prev,
+                                  [activeChoiceLabel]: Math.max(0, (prev[activeChoiceLabel] || 0) - 1),
+                                }));
+                                return;
+                              }
+                              setModalQuantity((q) => Math.max(0, q - 1));
+                            }}
                             className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center text-xl font-bold text-gray-600 hover:border-primary hover:text-primary transition-colors"
                           >
                             −
                           </button>
-                          <span className="text-2xl font-black text-gray-900 min-w-[2rem] text-center">{modalQuantity}</span>
+                          <span className="text-2xl font-black text-gray-900 min-w-[2rem] text-center">
+                            {choiceOptions.length > 0 ? selectedOptionQuantity : modalQuantity}
+                          </span>
                           <button
                             type="button"
-                            onClick={() => setModalQuantity(q => q + 1)}
+                            onClick={() => {
+                              if (choiceOptions.length > 0 && activeChoiceLabel) {
+                                setModalOptionQuantities((prev) => ({
+                                  ...prev,
+                                  [activeChoiceLabel]: (prev[activeChoiceLabel] || 0) + 1,
+                                }));
+                                return;
+                              }
+                              setModalQuantity((q) => q + 1);
+                            }}
                             className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center text-xl font-bold text-gray-600 hover:border-primary hover:text-primary transition-colors"
                           >
                             +
@@ -2295,19 +2333,32 @@ function AppContent() {
                             const selectedId = activeChoiceLabel
                               ? `${selectedMenuItem.id}-${activeChoiceLabel}`
                               : selectedMenuItem.id;
-                            for (let i = 0; i < modalQuantity; i++) {
-                              addToCart(selectedId, selectedName, selectedPrice, modalNotes);
+                            if (choiceOptions.length > 0) {
+                              choiceOptions.forEach((option) => {
+                                const optionQty = modalOptionQuantities[option.label] || 0;
+                                if (optionQty < 1) return;
+                                const optionId = `${selectedMenuItem.id}-${option.label}`;
+                                const optionName = `${selectedMenuItem.name} (${option.label.toUpperCase()})`;
+                                for (let i = 0; i < optionQty; i++) {
+                                  addToCart(optionId, optionName, option.price, modalNotes);
+                                }
+                              });
+                            } else {
+                              for (let i = 0; i < modalQuantity; i++) {
+                                addToCart(selectedId, selectedName, selectedPrice, modalNotes);
+                              }
                             }
-                            if (modalQuantity > 0) setShowCartHint(true);
+                            if (modalTotalQuantity > 0) setShowCartHint(true);
                             setSelectedMenuItem(null);
                             setSelectedDrinkSize(null);
                             setModalNotes('');
                             setModalQuantity(0);
+                            setModalOptionQuantities({});
                           }}
                           className="w-full py-4 rounded-2xl bg-primary text-white font-black text-lg"
-                          disabled={selectedMenuItem.available === false || modalQuantity < 1}
+                          disabled={selectedMenuItem.available === false || modalTotalQuantity < 1}
                         >
-                          {selectedMenuItem.available === false ? 'No disponible' : modalQuantity < 1 ? 'Selecciona la cantidad' : `Agregar al pedido · RD$ ${(selectedPrice * modalQuantity).toFixed(0)}`}
+                          {selectedMenuItem.available === false ? 'No disponible' : modalTotalQuantity < 1 ? 'Selecciona la cantidad' : `Agregar al pedido · RD$ ${modalTotalPrice.toFixed(0)}`}
                         </button>
                       </div>
                     </motion.div>
