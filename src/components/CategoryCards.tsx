@@ -16,6 +16,7 @@ const categories = [
     id: 'shipping', 
     title: 'ENVÍOS', 
     subtitle: '(Paquetes)', 
+    comingSoon: true,
     icon: Package, 
     color: 'bg-blue-50', 
     iconColor: 'text-blue-500',
@@ -25,6 +26,7 @@ const categories = [
     id: 'errands', 
     title: 'MANDADOS', 
     subtitle: '(Hacer un favor)', 
+    comingSoon: true,
     icon: Zap, 
     color: 'bg-yellow-50', 
     iconColor: 'text-yellow-500',
@@ -34,6 +36,7 @@ const categories = [
     id: 'supermarket', 
     title: 'SÚPER & FARMACIA', 
     subtitle: '', 
+    comingSoon: true,
     icon: ShoppingCart, 
     color: 'bg-emerald-50', 
     iconColor: 'text-emerald-500',
@@ -63,6 +66,11 @@ const CategoryCards: React.FC<CategoryCardsProps> = ({ onSelectCategory }) => {
             <div className="flex flex-col min-w-0">
               <span className="text-sm font-black text-gray-900 leading-tight">{cat.title}</span>
               {cat.subtitle && <span className="text-[11px] font-medium text-gray-500 truncate">{cat.subtitle}</span>}
+              {cat.comingSoon && (
+                <span className="mt-1 inline-flex w-fit items-center rounded-full bg-gray-900 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wide">
+                  Disponible pronto
+                </span>
+              )}
             </div>
           </motion.button>
         ))}
@@ -84,6 +92,11 @@ const CategoryCards: React.FC<CategoryCardsProps> = ({ onSelectCategory }) => {
             <div className="flex flex-col">
               <span className="text-sm font-black text-gray-900 leading-tight">{cat.title}</span>
               {cat.subtitle && <span className="text-[11px] font-medium text-gray-500">{cat.subtitle}</span>}
+              {cat.comingSoon && (
+                <span className="mt-1 inline-flex w-fit items-center rounded-full bg-gray-900 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wide">
+                  Disponible pronto
+                </span>
+              )}
             </div>
           </motion.button>
         ))}
