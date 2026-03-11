@@ -826,7 +826,7 @@ function AppContent() {
 
   const handleInstallApp = async () => {
     if (!deferredInstallPrompt) {
-      alert('La instalación aún no está disponible en este dispositivo o navegador.');
+      alert('Para instalar la app, abre el menú de Chrome (⋮) y toca "Agregar a pantalla principal" o "Instalar aplicación".');
       return;
     }
     try {
@@ -1747,7 +1747,7 @@ function AppContent() {
       onViewChange={setView}
       cartCount={cart.reduce((a, b) => a + b.quantity, 0)}
       onCartClick={() => setIsCartOpen(true)}
-      showInstallAppButton={canInstallApp && !isStandaloneMode}
+      showInstallAppButton={!isStandaloneMode}
       onInstallAppClick={handleInstallApp}
       showCartHint={showCartHint}
       onCartHintDismiss={() => setShowCartHint(false)}
