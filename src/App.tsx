@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Clock, Star, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid, Share2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
@@ -1656,6 +1656,17 @@ function AppContent() {
           return;
         }
       }
+      const selectedBusinessLocation = Array.isArray((selectedBusiness as any)?.location)
+        && (selectedBusiness as any).location.length === 2
+        && Number.isFinite(Number((selectedBusiness as any).location[0]))
+        && Number.isFinite(Number((selectedBusiness as any).location[1]))
+        ? [Number((selectedBusiness as any).location[0]), Number((selectedBusiness as any).location[1])] as [number, number]
+        : (
+          Number.isFinite(Number((selectedBusiness as any)?.latitude))
+          && Number.isFinite(Number((selectedBusiness as any)?.longitude))
+            ? [Number((selectedBusiness as any).latitude), Number((selectedBusiness as any).longitude)] as [number, number]
+            : null
+        );
       const orderData: any = {
         clientId: user.id,
         clientName: user.name,
@@ -1666,6 +1677,9 @@ function AppContent() {
         businessName: selectedBusiness.name,
         businessEmail: selectedBusiness.email || '',
         businessPhone: selectedBusiness.phone || '',
+        businessLocation: selectedBusinessLocation,
+        businessLat: selectedBusinessLocation ? selectedBusinessLocation[0] : null,
+        businessLng: selectedBusinessLocation ? selectedBusinessLocation[1] : null,
         items: cart.map(item => ({
           id: item.id,
           name: item.name,
@@ -2610,3 +2624,6 @@ function App() {
 }
 
 export default App;
+
+
+

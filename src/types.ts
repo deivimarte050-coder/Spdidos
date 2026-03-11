@@ -78,6 +78,9 @@ export interface Business {
   transferBankName?: string;
   transferAccountNumber?: string;
   transferAccountHolder?: string;
+  location?: [number, number];
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface DeliveryPerson {

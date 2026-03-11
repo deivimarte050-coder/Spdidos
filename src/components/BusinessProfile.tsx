@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import EventService from '../services/EventService';
 import { BusinessDayKey, WeeklyBusinessSchedule, TransferBankAccount } from '../types';
+import BusinessLocationPicker from './BusinessLocationPicker';
 
 const DAY_ORDER: { key: BusinessDayKey; label: string }[] = [
   { key: 'monday', label: 'Lunes' },
@@ -55,6 +56,20 @@ const normalizeTransferBankAccounts = (accounts: any[]): TransferBankAccount[] =
     .filter((account) => account.bankName && account.accountNumber && account.accountHolder)
 );
 
+const normalizeBusinessLocation = (business: any): [number, number] | null => {
+  if (Array.isArray(business?.location) && business.location.length === 2) {
+    const lat = Number(business.location[0]);
+    const lng = Number(business.location[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+  }
+
+  const lat = Number(business?.latitude);
+  const lng = Number(business?.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+
+  return null;
+};
+
 interface BusinessProfileData {
   id?: string;
   name: string;
@@ -69,6 +84,7 @@ interface BusinessProfileData {
   closingTime: string;
   weeklySchedule: WeeklyBusinessSchedule;
   transferBankAccounts: TransferBankAccount[];
+  location: [number, number] | null;
   image: string;
   isActive: boolean;
   status?: string;
@@ -92,6 +108,7 @@ const BusinessProfile: React.FC = () => {
     closingTime: '22:00',
     weeklySchedule: buildDefaultWeeklySchedule('08:00', '22:00'),
     transferBankAccounts: [{ bankName: '', accountNumber: '', accountHolder: '' }],
+    location: null,
     image: 'https://picsum.photos/seed/restaurant/400/300',
     isActive: true
   });
@@ -163,6 +180,7 @@ const BusinessProfile: React.FC = () => {
                 }
                 return [{ bankName: '', accountNumber: '', accountHolder: '' }];
               })(),
+              location: normalizeBusinessLocation(business),
               image: business.image || 'https://picsum.photos/seed/restaurant/400/300',
               isActive: business.status === 'active',
               status: business.status || 'active'
@@ -311,6 +329,7 @@ const BusinessProfile: React.FC = () => {
       const mondaySchedule = profile.weeklySchedule.monday;
       const normalizedAccounts = normalizeTransferBankAccounts(profile.transferBankAccounts);
       const primaryTransferAccount = normalizedAccounts[0] || null;
+      const businessLocation = profile.location;
       const updateData = {
         name: profile.name,
         description: profile.description,
@@ -328,6 +347,9 @@ const BusinessProfile: React.FC = () => {
         transferBankName: primaryTransferAccount?.bankName || '',
         transferAccountNumber: primaryTransferAccount?.accountNumber || '',
         transferAccountHolder: primaryTransferAccount?.accountHolder || '',
+        location: businessLocation,
+        latitude: businessLocation ? businessLocation[0] : null,
+        longitude: businessLocation ? businessLocation[1] : null,
         image: safeImage,
         status: profile.isActive ? 'active' : 'inactive'
       };
@@ -548,6 +570,17 @@ const BusinessProfile: React.FC = () => {
               ) : (
                 <p className="text-gray-700 mt-1">{profile.whatsapp}</p>
               )}
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Ubicación del negocio</label>
+              <div className="mt-2">
+                <BusinessLocationPicker
+                  value={profile.location}
+                  editable={isEditing}
+                  onChange={(coords) => setProfile((prev) => ({ ...prev, location: coords }))}
+                />
+              </div>
             </div>
 
             <div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard,
@@ -40,8 +40,23 @@ import DataService, { Business, Order } from '../services/DataService';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import EventService from '../services/EventService'; // Importar EventService
 import { User as AppUser } from '../types';
+import BusinessLocationPicker from '../components/BusinessLocationPicker';
 
 const DEFAULT_ANNOUNCEMENT_IMAGE_URL = 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&h=320&fit=crop&crop=center';
+
+const normalizeBusinessLocation = (business: any): [number, number] | null => {
+  if (Array.isArray(business?.location) && business.location.length === 2) {
+    const lat = Number(business.location[0]);
+    const lng = Number(business.location[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+  }
+
+  const lat = Number(business?.latitude);
+  const lng = Number(business?.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+
+  return null;
+};
 
 const AdminView: React.FC = () => {
   const { user, logout } = useAuth();
@@ -82,6 +97,7 @@ const AdminView: React.FC = () => {
     whatsapp: '',
     category: '',
     address: '',
+    location: null as [number, number] | null,
     image: '',
     deliveryFee: 50,
     password: ''
@@ -97,6 +113,7 @@ const AdminView: React.FC = () => {
     whatsapp: '',
     category: '',
     address: '',
+    location: null as [number, number] | null,
     image: '',
     deliveryFee: 50,
     password: ''
@@ -287,6 +304,9 @@ const AdminView: React.FC = () => {
     const businessWithPassword = {
       ...newBusiness,
       password: generatedPassword,
+      location: newBusiness.location,
+      latitude: newBusiness.location ? newBusiness.location[0] : null,
+      longitude: newBusiness.location ? newBusiness.location[1] : null,
       status: 'active',
       rating: 4.0,
       totalOrders: 0,
@@ -322,7 +342,7 @@ const AdminView: React.FC = () => {
       
       alert(`✅ Negocio y usuario creados exitosamente\n\n📧 Email: ${newBusiness.email}\n🔑 Contraseña: ${generatedPassword}\n\n⚠️ IMPORTANTE: Ahora puedes iniciar sesión con estas credenciales.`);
       
-      setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', image: '', deliveryFee: 50, password: '' });
+      setNewBusiness({ name: '', email: '', phone: '', whatsapp: '', category: '', address: '', location: null, image: '', deliveryFee: 50, password: '' });
       setActiveTab('businesses');
     } catch (error: any) {
       console.error('❌ Error completo:', error);
@@ -373,6 +393,7 @@ const AdminView: React.FC = () => {
       whatsapp: business.whatsapp || '',
       category: business.category || '',
       address: business.address || '',
+      location: normalizeBusinessLocation(business),
       image: business.image || '',
       deliveryFee: Number(business.deliveryFee ?? 50),
       password: '' // Dejar en blanco, solo cambiar si se ingresa nueva
@@ -388,6 +409,7 @@ const AdminView: React.FC = () => {
       whatsapp: '',
       category: '',
       address: '',
+      location: null,
       image: '',
       deliveryFee: 50,
       password: ''
@@ -409,6 +431,9 @@ const AdminView: React.FC = () => {
         whatsapp: editForm.whatsapp,
         category: editForm.category,
         address: editForm.address,
+        location: editForm.location,
+        latitude: editForm.location ? editForm.location[0] : null,
+        longitude: editForm.location ? editForm.location[1] : null,
         image: editForm.image,
         deliveryFee: Number(editForm.deliveryFee) || 0
       };
@@ -764,6 +789,15 @@ const AdminView: React.FC = () => {
                         onChange={(e) => setNewBusiness({...newBusiness, address: e.target.value})}
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
                         placeholder="Calle Principal #123"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">Ubicaci�n del negocio</label>
+                      <BusinessLocationPicker
+                        value={newBusiness.location}
+                        onChange={(coords) => setNewBusiness({ ...newBusiness, location: coords })}
+                        editable
                       />
                     </div>
 
@@ -1667,6 +1701,15 @@ const AdminView: React.FC = () => {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Ubicaci�n del negocio</label>
+                    <BusinessLocationPicker
+                      value={editForm.location}
+                      onChange={(coords) => setEditForm({ ...editForm, location: coords })}
+                      editable
+                    />
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">Costo de Delivery (RD$)</label>
                     <input
                       type="number"
@@ -1729,3 +1772,7 @@ const AdminView: React.FC = () => {
 };
 
 export default AdminView;
+
+
+
+

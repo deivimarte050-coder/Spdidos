@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+﻿import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Package, MapPin, CheckCircle2, Navigation, Store, MessageCircle, Power, Search, ShieldAlert, LogOut, Clock, DollarSign, Map as MapIcon, ChevronRight } from 'lucide-react';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
@@ -140,7 +140,7 @@ const RoutePolylineLayer: React.FC<{
 };
 
 // ─── Card view map (light tiles, indigo route) ────────────────────────────────
-const DeliveryTrackingMap: React.FC<{ deliveryLoc: [number, number]; clientLoc?: [number, number] }> = ({ deliveryLoc, clientLoc }) => (
+const DeliveryTrackingMap: React.FC<{ deliveryLoc: [number, number]; clientLoc?: [number, number]; businessLoc?: [number, number] }> = ({ deliveryLoc, clientLoc, businessLoc }) => (
   <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: 300 }}>
     <MapContainer center={deliveryLoc} zoom={16} className="h-full w-full" scrollWheelZoom={false} zoomControl={false}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
@@ -155,6 +155,12 @@ const DeliveryTrackingMap: React.FC<{ deliveryLoc: [number, number]; clientLoc?:
           className: '', iconSize: [36, 44], iconAnchor: [18, 44],
           html: `<div style="display:flex;flex-direction:column;align-items:center"><div style="width:32px;height:32px;background:#dc2626;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(220,38,38,.5)"></div></div>`
         })}><Popup>📦 Entrega aquí</Popup></Marker>
+      )}
+      {businessLoc && (
+        <Marker position={businessLoc} icon={L.divIcon({
+          className: '', iconSize: [36, 44], iconAnchor: [18, 44],
+          html: `<div style="display:flex;flex-direction:column;align-items:center"><div style="width:32px;height:32px;background:#f59e0b;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(245,158,11,.5)"></div></div>`
+        })}><Popup>?? Negocio</Popup></Marker>
       )}
     </MapContainer>
   </div>
@@ -359,6 +365,28 @@ const DeliveryView: React.FC = () => {
     return c ? [c.lat, c.lng] : undefined;
   };
 
+  const getBusinessCoords = (order?: Order | null): { lat: number; lng: number } | null => {
+    const target = order || myOrder;
+    if (!target) return null;
+
+    if (Array.isArray((target as any).businessLocation) && (target as any).businessLocation.length === 2) {
+      const lat = Number((target as any).businessLocation[0]);
+      const lng = Number((target as any).businessLocation[1]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+
+    const lat = Number((target as any).businessLat ?? (target as any).latitude);
+    const lng = Number((target as any).businessLng ?? (target as any).longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+
+    return null;
+  };
+
+  const getBusinessLocTuple = (order?: Order | null): [number, number] | undefined => {
+    const b = getBusinessCoords(order);
+    return b ? [b.lat, b.lng] : undefined;
+  };
+
   const openInWaze = () => {
     const coords = getClientCoords();
     if (coords) {
@@ -374,6 +402,19 @@ const DeliveryView: React.FC = () => {
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`, '_blank');
     } else if (myOrder?.deliveryAddress) {
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(myOrder.deliveryAddress)}`, '_blank');
+    }
+  };
+
+  const openBusinessInGoogleMaps = (order?: Order | null) => {
+    const coords = getBusinessCoords(order);
+    if (coords) {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`, '_blank');
+      return;
+    }
+
+    const target = order || myOrder;
+    if (target?.businessName) {
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target.businessName)}`, '_blank');
     }
   };
 
@@ -756,7 +797,7 @@ const DeliveryView: React.FC = () => {
                   </div>
                 </div>
 
-                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={getClientLocTuple()} />
+                <DeliveryTrackingMap deliveryLoc={myLocation} clientLoc={getClientLocTuple()} businessLoc={getBusinessLocTuple()} />
 
                 {/* Live location badge */}
                 {clientLiveLocation && (
@@ -776,6 +817,12 @@ const DeliveryView: React.FC = () => {
                     className="flex items-center justify-center gap-2 p-3 bg-[#33ccff] text-white rounded-xl font-bold text-sm">
                     <img src="https://cdn-icons-png.flaticon.com/512/732/732258.png" className="w-4 h-4" alt="Waze" /> Waze
                   </button>
+                  {getBusinessLocTuple() && (
+                    <button onClick={() => openBusinessInGoogleMaps()}
+                      className="flex items-center justify-center gap-2 p-3 bg-amber-500 text-white rounded-xl font-bold text-sm">
+                      <MapPin className="w-4 h-4" /> Ir al negocio
+                    </button>
+                  )}
                 </div>
 
                 {myOrder.status === 'arrived' && (
@@ -903,10 +950,20 @@ const DeliveryView: React.FC = () => {
                     )}
                   </div>
 
-                  <button onClick={() => handleAcceptOrder(order)}
-                    className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20">
-                    Aceptar Pedido
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button onClick={() => handleAcceptOrder(order)}
+                      className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20">
+                      Aceptar Pedido
+                    </button>
+                    {getBusinessLocTuple(order) && (
+                      <button
+                        onClick={() => openBusinessInGoogleMaps(order)}
+                        className="w-full bg-amber-100 text-amber-700 py-3 rounded-xl font-bold hover:bg-amber-200 transition-all border border-amber-200"
+                      >
+                        Ir al negocio
+                      </button>
+                    )}
+                  </div>
                 </motion.div>
               ))
             )}
@@ -919,3 +976,8 @@ const DeliveryView: React.FC = () => {
 };
 
 export default DeliveryView;
+
+
+
+
+
