@@ -762,6 +762,16 @@ const DeliveryView: React.FC = () => {
                       <MapPin className="w-3 h-3" />
                       <span>{myOrder.deliveryAddress || 'Dirección del cliente'}</span>
                     </div>
+                    {getBusinessLocTuple() && (
+                      <button
+                        type="button"
+                        onClick={() => openBusinessInGoogleMaps()}
+                        className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        Ver ubicación del negocio
+                      </button>
+                    )}
                     <p className="text-sm font-bold text-emerald-600 mt-1">
                       <DollarSign className="w-3 h-3 inline" /> Ganancia: RD$ {myOrder.deliveryFee || 150}
                     </p>
@@ -890,6 +900,16 @@ const DeliveryView: React.FC = () => {
                         <p className="text-sm text-gray-500 flex items-center gap-1">
                           <MapPin className="w-3 h-3" /> {order.deliveryAddress || 'San Pedro de Macorís'}
                         </p>
+                        {getBusinessLocTuple(order) && (
+                          <button
+                            type="button"
+                            onClick={() => openBusinessInGoogleMaps(order)}
+                            className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800"
+                          >
+                            <MapPin className="w-3 h-3" />
+                            Ver ubicación del negocio
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
