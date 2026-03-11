@@ -234,7 +234,9 @@ const DeliveryView: React.FC = () => {
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
       const availableStatuses = new Set(['accepted', 'preparing', 'ready']);
       const available = orders.filter((o) => availableStatuses.has(o.status) && !o.deliveryId);
-      const mine = orders.find(o => o.deliveryId === user?.id && (o.status === 'on_the_way' || o.status === 'arrived'));
+      const mine = orders.find(
+        o => o.deliveryId === user?.id && ['accepted', 'preparing', 'ready', 'on_the_way', 'arrived'].includes(o.status)
+      );
       const completed = orders
         .filter((o) => o.deliveryId === user?.id && o.status === 'delivered')
         .sort((a, b) => new Date((b.deliveredAt || b.createdAt) as string).getTime() - new Date((a.deliveredAt || a.createdAt) as string).getTime());
@@ -281,9 +283,9 @@ const DeliveryView: React.FC = () => {
     }
   }, []);
 
-  // Send GPS to Firebase every 4 seconds when on active delivery
+  // Send GPS to Firebase every 4 seconds when order is ready or in active delivery
   useEffect(() => {
-    if (myOrder?.id && myOrder.status === 'on_the_way') {
+    if (myOrder?.id && ['ready', 'on_the_way'].includes(myOrder.status)) {
       gpsIntervalRef.current = setInterval(() => {
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(pos => {
@@ -300,13 +302,24 @@ const DeliveryView: React.FC = () => {
   const handleAcceptOrder = async (order: Order) => {
     soundService.stopRinging(); // stop ringing for this delivery person
     try {
-      await FirebaseServiceV2.updateOrder(order.id, {
-        status: 'on_the_way',
+      const payload: Record<string, any> = {
         deliveryId: user?.id,
         deliveryName: user?.name
-      });
+      };
+      if (order.status === 'ready') {
+        payload.status = 'on_the_way';
+      }
+      await FirebaseServiceV2.updateOrder(order.id, payload);
       await FirebaseServiceV2.updateDeliveryLocation(order.id, myLocation[0], myLocation[1]);
     } catch (err) { console.error('Error aceptando pedido:', err); }
+  };
+
+  const handleStartDelivery = async () => {
+    if (!myOrder || myOrder.status !== 'ready') return;
+    try {
+      await FirebaseServiceV2.updateOrder(myOrder.id, { status: 'on_the_way' });
+      await FirebaseServiceV2.updateDeliveryLocation(myOrder.id, myLocation[0], myLocation[1]);
+    } catch (err) { console.error('Error iniciando entrega:', err); }
   };
 
   const handleArrive = async () => {
@@ -725,7 +738,13 @@ const DeliveryView: React.FC = () => {
                     className="text-white font-bold text-sm whitespace-nowrap">
                     Vista general
                   </button>
-                  {myOrder.status === 'on_the_way' ? (
+                  {myOrder.status === 'ready' ? (
+                    <button onClick={handleStartDelivery}
+                      style={{ background: '#2563eb', borderRadius: 22, padding: '9px 16px' }}
+                      className="text-white font-bold text-sm flex items-center gap-2 whitespace-nowrap">
+                      <Navigation className="w-4 h-4" /> Iniciar ruta
+                    </button>
+                  ) : myOrder.status === 'on_the_way' ? (
                     <button onClick={handleArrive}
                       style={{ background: '#0d9488', borderRadius: 22, padding: '9px 16px' }}
                       className="text-white font-bold text-sm flex items-center gap-2 whitespace-nowrap">
@@ -848,6 +867,12 @@ const DeliveryView: React.FC = () => {
                       className="flex items-center justify-center gap-2 p-3 bg-emerald-50 rounded-xl text-emerald-600 font-bold text-sm">
                       <MessageCircle className="w-4 h-4" /> WhatsApp
                     </a>
+                  )}
+                  {myOrder.status === 'ready' && (
+                    <button onClick={handleStartDelivery}
+                      className={`flex items-center justify-center gap-2 p-3 bg-blue-600 text-white rounded-xl font-bold text-sm ${myOrder.clientWhatsapp ? '' : 'col-span-2'}`}>
+                      <Navigation className="w-4 h-4" /> Iniciar ruta
+                    </button>
                   )}
                   {myOrder.status === 'on_the_way' && (
                     <button onClick={handleArrive}
