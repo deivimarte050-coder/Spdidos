@@ -1314,11 +1314,54 @@ function AppContent() {
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
   const normalizedSearchQuery = normalizeSearchText(menuSearchQuery.trim());
+  const containsAnyKeyword = (text: string, keywords: string[]) =>
+    keywords.some((keyword) => text.includes(keyword));
   const isDrinkItem = (item?: MenuItem | null) => {
     if (!item) return false;
     const category = normalizeSearchText(item.category || '');
     const text = normalizeSearchText(`${item.name || ''} ${item.description || ''}`);
     return category.includes('bebida') || text.includes('jugo') || text.includes('refresco') || text.includes('batida');
+  };
+  const matchesMenuCategory = (item: MenuItem, category: string) => {
+    const normalizedCategory = normalizeSearchText(category || '');
+    const itemCategory = normalizeSearchText(item.category || 'general');
+    const itemText = normalizeSearchText(`${item.name || ''} ${item.description || ''} ${item.category || ''}`);
+
+    if (normalizedCategory === 'all') return true;
+    if (normalizedCategory === 'bebidas') return isDrinkItem(item);
+    if (itemCategory === normalizedCategory) return true;
+    if (itemCategory.includes(normalizedCategory) || normalizedCategory.includes(itemCategory)) return true;
+
+    if (normalizedCategory.includes('saludable')) {
+      return containsAnyKeyword(itemText, ['ensalada', 'saludable', 'healthy', 'vegetal', 'vegano', 'fitness']);
+    }
+
+    if (normalizedCategory.includes('pollo')) {
+      return containsAnyKeyword(itemText, ['pollo', 'pica pollo', 'chicken']);
+    }
+
+    if (normalizedCategory.includes('sandwich') || normalizedCategory.includes('sanduch') || normalizedCategory.includes('sandwiches')) {
+      return containsAnyKeyword(itemText, ['sandwich', 'sanduche', 'sandwiches', 'sanduich']);
+    }
+
+    if (normalizedCategory.includes('comida dominicana') || normalizedCategory.includes('dominicana')) {
+      return containsAnyKeyword(itemText, [
+        'comida dominicana',
+        'comida criolla',
+        'pica pollo',
+        'pollo',
+        'habichuela',
+        'arroz',
+        'plato del dia',
+        'mangu',
+        'sancocho',
+        'yaroa',
+        'pastelon',
+        'hamburguesa',
+      ]);
+    }
+
+    return false;
   };
   const getMenuChoiceOptions = (item?: MenuItem | null) => {
     if (!item) return [] as { label: string; price: number | null }[];
@@ -1377,9 +1420,7 @@ function AppContent() {
   })();
   const filteredMenuItems = selectedBusinessMenu
     .filter((item: any) => {
-      if (activeMenuCategory === 'all') return true;
-      if (normalizeSearchText(activeMenuCategory) === 'bebidas') return isDrinkItem(item);
-      return (item.category || 'General') === activeMenuCategory;
+      return matchesMenuCategory(item, activeMenuCategory);
     })
     .filter((item: any) => {
       if (!normalizedSearchQuery) return true;
@@ -1822,12 +1863,17 @@ function AppContent() {
             </div>
 
             <div className="flex gap-3 overflow-x-auto pb-1">
-              {['Saludable', 'Comida dominicana', 'Sándwiches', 'Pollo'].map((category) => (
-                <button key={category} className="flex-shrink-0 bg-white rounded-2xl p-2.5 w-[88px] border border-gray-100 text-center">
-                  <div className="w-14 h-14 rounded-xl bg-gray-100 mx-auto mb-2 overflow-hidden">
-                    <img src={`https://picsum.photos/seed/${encodeURIComponent(category)}/120/120`} alt={category} className="w-full h-full object-cover" />
+              {[
+                { label: 'Saludable', icon: '🥗' },
+                { label: 'Comida dominicana', icon: '🇩🇴' },
+                { label: 'Sándwiches', icon: '🥪' },
+                { label: 'Pollo', icon: '🐔' },
+              ].map((category) => (
+                <button key={category.label} className="flex-shrink-0 bg-white rounded-2xl p-2.5 w-[88px] border border-gray-100 text-center">
+                  <div className="w-14 h-14 rounded-xl bg-gray-100 mx-auto mb-2 flex items-center justify-center text-3xl">
+                    <span role="img" aria-label={category.label}>{category.icon}</span>
                   </div>
-                  <p className="text-xs font-semibold text-gray-700 leading-tight">{category}</p>
+                  <p className="text-xs font-semibold text-gray-700 leading-tight">{category.label}</p>
                 </button>
               ))}
             </div>
