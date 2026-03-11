@@ -1095,11 +1095,12 @@ function AppContent() {
     catch (err) { console.error('Error rechazando pedido:', err); }
   };
 
-  // Global subscription for delivery users — rings on new ready orders from any tab
+  // Global subscription for delivery users — rings on new business-approved orders from any tab
   useEffect(() => {
     if (user?.role !== 'delivery') return;
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
-      const available = orders.filter(o => o.status === 'ready');
+      const availableStatuses = new Set(['accepted', 'preparing', 'ready']);
+      const available = orders.filter((o) => availableStatuses.has(o.status) && !o.deliveryId);
       const myActive  = orders.find(o => o.deliveryId === user.id && (o.status === 'on_the_way' || o.status === 'arrived'));
 
       if (!deliveryGlobalInited.current) {
@@ -1109,7 +1110,7 @@ function AppContent() {
         const hasNew = available.some(o => !deliveryKnownReadyIds.current.has(o.id));
         if (hasNew && !myActive) {
           soundService.startRinging();
-          showPushNotification('¡Pedido disponible! 📦', 'Hay un nuevo pedido listo para recoger', 'ready-order');
+          showPushNotification('¡Pedido disponible! 📦', 'Un negocio aceptó un pedido y está disponible para ti', 'ready-order');
         }
         if (available.length === 0)  soundService.stopRinging();
         available.forEach(o => deliveryKnownReadyIds.current.add(o.id));

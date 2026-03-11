@@ -17,6 +17,11 @@ interface RouteInfo { totalTime: number; totalDistance: number; steps: RouteStep
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmtDist = (m: number) => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
 const fmtTime = (s: number) => s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.ceil(s / 60)} min`;
+const DELIVERY_PREP_STEPS = [
+  { status: 'accepted', label: 'Aceptado' },
+  { status: 'preparing', label: 'Preparando' },
+  { status: 'ready', label: 'Listo' }
+] as const;
 
 const maneuverText = (type: string, modifier?: string): string => {
   const mod = modifier ? ` ${modifier === 'left' ? 'a la izquierda' : modifier === 'right' ? 'a la derecha' : modifier === 'straight' ? 'recto' : modifier}` : '';
@@ -218,10 +223,11 @@ const DeliveryView: React.FC = () => {
     }, 60_000);
     return () => clearInterval(timer);
   }, []);
-  // Subscribe to available (ready) orders — sound is handled globally in App.tsx
+  // Subscribe to available orders — sound is handled globally in App.tsx
   useEffect(() => {
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
-      const available = orders.filter(o => o.status === 'ready');
+      const availableStatuses = new Set(['accepted', 'preparing', 'ready']);
+      const available = orders.filter((o) => availableStatuses.has(o.status) && !o.deliveryId);
       const mine = orders.find(o => o.deliveryId === user?.id && (o.status === 'on_the_way' || o.status === 'arrived'));
       const completed = orders
         .filter((o) => o.deliveryId === user?.id && o.status === 'delivered')
@@ -376,6 +382,13 @@ const DeliveryView: React.FC = () => {
     if (method.includes('card') || method.includes('tarjeta')) return 'Tarjeta';
     if (method.includes('cash') || method.includes('efectivo')) return 'Efectivo';
     return paymentMethod || 'No especificado';
+  };
+
+  const getPrepStatusLabel = (status?: string) => {
+    if (status === 'accepted') return 'Aceptado por negocio';
+    if (status === 'preparing') return 'Preparando pedido';
+    if (status === 'ready') return 'Listo para recoger';
+    return 'Estado no disponible';
   };
 
   const getClientNotes = (order: Order) => {
@@ -837,11 +850,32 @@ const DeliveryView: React.FC = () => {
                       <p className="text-xs text-gray-400 flex items-center gap-1 justify-end">
                         <Clock className="w-3 h-3" /> {order.eta || '20-35 min'}
                       </p>
+                      <span className="inline-flex mt-1 text-[10px] font-black px-2 py-1 rounded-full bg-blue-50 text-blue-700 uppercase">
+                        {getPrepStatusLabel(order.status)}
+                      </span>
                     </div>
                   </div>
 
                   <div className="bg-gray-50 rounded-xl p-3 space-y-2">
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Pedido #{order.id}</p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {DELIVERY_PREP_STEPS.map((step) => {
+                        const currentIndex = DELIVERY_PREP_STEPS.findIndex((s) => s.status === order.status);
+                        const stepIndex = DELIVERY_PREP_STEPS.findIndex((s) => s.status === step.status);
+                        const isCurrent = step.status === order.status;
+                        const isDone = currentIndex > stepIndex;
+                        return (
+                          <div
+                            key={`${order.id}-${step.status}`}
+                            className={`rounded-lg px-2 py-1 text-[10px] font-black text-center uppercase ${
+                              isCurrent ? 'bg-blue-100 text-blue-700' : isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-gray-400 border border-gray-200'
+                            }`}
+                          >
+                            {step.label}
+                          </div>
+                        );
+                      })}
+                    </div>
                     <div>
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Productos</p>
                       <ul className="mt-1 text-sm text-gray-700 space-y-1">

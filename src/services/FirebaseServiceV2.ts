@@ -269,7 +269,7 @@ class FirebaseServiceV2 {
   subscribeToDeliveryOrders(callback: (orders: any[]) => void): () => void {
     const q = query(
       collection(db, COLLECTIONS.ORDERS),
-      where('status', 'in', ['ready', 'on_the_way', 'arrived'])
+      where('status', 'in', ['accepted', 'preparing', 'ready', 'on_the_way', 'arrived'])
     );
     return onSnapshot(q, (snap) => {
       const orders = snap.docs
