@@ -160,9 +160,9 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white z-[101] shadow-2xl flex flex-col"
+            className="fixed right-0 top-0 bottom-0 h-[100dvh] w-full max-w-md bg-white z-[101] shadow-2xl flex flex-col"
           >
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <div className="p-4 sm:p-6 border-b border-gray-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="bg-primary/10 p-2 rounded-xl text-primary">
                   <ShoppingBag className="w-6 h-6" />
@@ -177,7 +177,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
               {items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
                   <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300">
@@ -225,7 +225,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
             </div>
 
             {items.length > 0 && (
-              <div className="p-6 bg-gray-50 border-t border-gray-100 space-y-4">
+              <div className="p-4 sm:p-6 bg-gray-50 border-t border-gray-100 space-y-4 overflow-y-auto max-h-[58dvh] pb-[calc(1rem+env(safe-area-inset-bottom))]">
                 <div className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
                   <p className="text-sm font-black text-gray-900">Método de pago</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -306,7 +306,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                         />
                         {transferReceiptImage && (
                           <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-100">
-                            <img src={transferReceiptImage} alt="Comprobante de transferencia" className="w-full h-40 object-cover" />
+                            <img src={transferReceiptImage} alt="Comprobante de transferencia" className="w-full h-28 sm:h-40 object-cover" />
                           </div>
                         )}
                         {transferReceiptImage && (
@@ -340,7 +340,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                 <button 
                   onClick={onCheckout}
                   disabled={isCheckingOut || (paymentMethod === 'transfer' && (!transferAccountReady || !transferReceiptImage))}
-                  className={`w-full py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl transition-all ${
+                  className={`w-full py-4 sm:py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl transition-all ${
                     isCheckingOut || (paymentMethod === 'transfer' && (!transferAccountReady || !transferReceiptImage))
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
                       : 'bg-primary text-white shadow-primary/20 hover:scale-[1.02] active:scale-[0.98]'
