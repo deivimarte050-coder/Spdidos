@@ -2585,9 +2585,8 @@ function App() {
 
   return (
     <AuthProvider>
-      <AnimatePresence mode="wait">
-        {showSplash ? <SplashScreen /> : <AppContent />}
-      </AnimatePresence>
+      <AppContent />
+      <AnimatePresence>{showSplash ? <SplashScreen /> : null}</AnimatePresence>
     </AuthProvider>
   );
 }
