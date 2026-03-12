@@ -38,6 +38,7 @@ const ORDER_STEPS = [
   { status: 'on_the_way', label: 'En camino',          icon: Truck },
   { status: 'arrived',    label: '¡Repartidor llegó!',  icon: MapPin },
   { status: 'delivered',  label: 'Entregado',          icon: CheckCircle2 },
+  { status: 'cancelled',  label: 'Pedido cancelado',   icon: X },
 ];
 
 const getClientOrderStatusSummary = (status: Order['status']) => {
@@ -561,17 +562,38 @@ const TrackingView: React.FC<{
             const Icon = step.icon;
             const done = idx < stepIndex;
             const current = idx === stepIndex;
+            const cancelledCurrent = current && step.status === 'cancelled';
             return (
               <div key={step.status} className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                  done ? 'bg-emerald-500 text-white' : current ? 'bg-primary text-white ring-4 ring-primary/20' : 'bg-gray-100 text-gray-400'
+                  done
+                    ? 'bg-emerald-500 text-white'
+                    : cancelledCurrent
+                      ? 'bg-red-500 text-white ring-4 ring-red-100'
+                      : current
+                        ? 'bg-primary text-white ring-4 ring-primary/20'
+                        : 'bg-gray-100 text-gray-400'
                 }`}>
                   <Icon className="w-4 h-4" />
                 </div>
-                <span className={`text-sm font-medium ${current ? 'text-primary font-bold' : done ? 'text-gray-500 line-through' : 'text-gray-400'}`}>
+                <span className={`text-sm font-medium ${
+                  cancelledCurrent
+                    ? 'text-red-600 font-bold'
+                    : current
+                      ? 'text-primary font-bold'
+                      : done
+                        ? 'text-gray-500 line-through'
+                        : 'text-gray-400'
+                }`}>
                   {step.label}
                 </span>
-                {current && <span className="ml-auto text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold animate-pulse">Ahora</span>}
+                {current && (
+                  <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-bold animate-pulse ${
+                    cancelledCurrent ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'
+                  }`}>
+                    Ahora
+                  </span>
+                )}
               </div>
             );
           })}
@@ -702,6 +724,11 @@ const TrackingView: React.FC<{
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
           <p className="font-bold text-emerald-800">¡Pedido entregado! Buen provecho 🎉</p>
+        </div>
+      ) : order?.status === 'cancelled' ? (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
+          <X className="w-10 h-10 text-red-500 mx-auto mb-2" />
+          <p className="font-bold text-red-700">Pedido cancelado</p>
         </div>
       ) : null}
 
@@ -890,6 +917,7 @@ function AppContent() {
   const [canInstallApp, setCanInstallApp] = useState(false);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(() => isStandaloneDisplayMode());
   const sharedAuthNoticeShownRef = useRef(false);
+  const hadAuthenticatedSessionRef = useRef(false);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
   const clientGpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const checkoutLockRef = useRef(false);
@@ -1311,6 +1339,24 @@ function AppContent() {
     if (user?.role === 'client') {
       setForceAuthForSharedOrder(false);
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      hadAuthenticatedSessionRef.current = true;
+      return;
+    }
+
+    if (!hadAuthenticatedSessionRef.current) return;
+
+    setView('home');
+    setMenuOriginView('home');
+    setSelectedBusiness(null);
+    setSelectedMenuItem(null);
+    setMenuSearchQuery('');
+    setActiveMenuCategory('all');
+    setIsCartOpen(false);
+    setForceAuthForSharedOrder(true);
   }, [user]);
 
   // Keep client GPS updated while order is active (every 30s)
