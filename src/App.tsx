@@ -40,6 +40,104 @@ const ORDER_STEPS = [
   { status: 'delivered',  label: 'Entregado',          icon: CheckCircle2 },
 ];
 
+const getClientOrderStatusSummary = (status: Order['status']) => {
+  if (status === 'delivered') return 'Entregado';
+  if (status === 'cancelled') return 'Cancelado';
+  return 'En proceso';
+};
+
+const getClientOrderStatusSummaryStyles = (status: Order['status']) => {
+  if (status === 'delivered') return 'bg-emerald-100 text-emerald-700';
+  if (status === 'cancelled') return 'bg-red-100 text-red-700';
+  return 'bg-amber-100 text-amber-700';
+};
+
+const getClientPaymentMethodLabel = (paymentMethod?: string) => {
+  const method = String(paymentMethod || '').toLowerCase();
+  if (method === 'transfer' || method.includes('transfer')) return 'Transferencia';
+  return 'Efectivo';
+};
+
+const ClientOrderDetailsModal: React.FC<{
+  order: Order;
+  onClose: () => void;
+}> = ({ order, onClose }) => {
+  const displayDate = order.deliveredAt || order.cancelledAt || order.createdAt;
+  const paymentMethodLabel = getClientPaymentMethodLabel(order.paymentMethod);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)' }}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 20 }}
+        className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden max-h-[92vh]"
+      >
+        <div className="bg-primary px-6 py-4 text-white">
+          <h3 className="text-lg font-black">Detalles del pedido</h3>
+          <p className="text-white/85 text-sm">
+            {order.businessName || 'Negocio no disponible'} · Pedido #{order.id.slice(-8).toUpperCase()}
+          </p>
+        </div>
+
+        <div className="p-6 space-y-5 overflow-y-auto max-h-[72vh]">
+          <div className="bg-gray-50 rounded-2xl p-4 space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">Fecha</span><span className="font-black">{new Date(displayDate).toLocaleString()}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Estado</span><span className="font-black">{getClientOrderStatusSummary(order.status)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Método de pago</span><span className="font-black">{paymentMethodLabel}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Dirección</span><span className="font-black text-right max-w-[70%]">{order.deliveryAddress || 'No disponible'}</span></div>
+          </div>
+
+          <div>
+            <p className="font-black text-gray-900 mb-2">Productos pedidos</p>
+            <div className="space-y-2">
+              {(order.items || []).map((item, index) => (
+                <div key={`${item.id}-${index}`} className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700"><span className="font-black">{item.quantity}x</span> {item.name}</span>
+                    <span className="font-black">RD$ {((item.price || 0) * (item.quantity || 0)).toFixed(0)}</span>
+                  </div>
+                  {item.notes && <p className="text-xs text-gray-500 mt-1">Nota: {item.notes}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t space-y-1 text-sm">
+            <div className="flex justify-between text-gray-700">
+              <span>Subtotal</span>
+              <span>RD$ {(order.subtotal || 0).toFixed(0)}</span>
+            </div>
+            <div className="flex justify-between text-gray-700">
+              <span>Delivery</span>
+              <span>RD$ {(order.deliveryFee || 0).toFixed(0)}</span>
+            </div>
+            <div className="flex justify-between text-lg font-black text-gray-900 pt-1">
+              <span>Total</span>
+              <span>RD$ {(order.total || 0).toFixed(0)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 pt-0">
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-2xl bg-primary text-white font-black hover:bg-primary/90 transition-all"
+          >
+            Cerrar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const SplashScreen: React.FC = () => (
   <motion.div
     key="splash"
@@ -778,6 +876,7 @@ function AppContent() {
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [deliveredOrders, setDeliveredOrders] = useState<Order[]>([]);
   const [cancelledOrders, setCancelledOrders] = useState<Order[]>([]);
+  const [selectedClientHistoryOrder, setSelectedClientHistoryOrder] = useState<Order | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
@@ -1481,6 +1580,12 @@ function AppContent() {
       if (restaurantsQuickFilter === 'featured') return (business.rating || 0) >= 4.6;
       if (restaurantsQuickFilter === 'discounts') return (business.totalOrders || 0) % 2 === 0;
       return true;
+    });
+  const allClientOrders = [...activeOrders, ...deliveredOrders, ...cancelledOrders]
+    .sort((a, b) => {
+      const aTime = new Date((a.deliveredAt || a.cancelledAt || a.createdAt) as string).getTime();
+      const bTime = new Date((b.deliveredAt || b.cancelledAt || b.createdAt) as string).getTime();
+      return bTime - aTime;
     });
 
   const handleHomeCategorySelect = (categoryId: string) => {
@@ -2453,175 +2558,86 @@ function AppContent() {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-8 px-4 lg:px-0"
           >
-            <div>
-              <h2 className="text-3xl font-black font-display tracking-tight mb-8">Mis Pedidos</h2>
+            <AnimatePresence>
+              {selectedClientHistoryOrder && (
+                <ClientOrderDetailsModal
+                  order={selectedClientHistoryOrder}
+                  onClose={() => setSelectedClientHistoryOrder(null)}
+                />
+              )}
+            </AnimatePresence>
 
-              {activeOrders.length === 0 && deliveredOrders.length === 0 && cancelledOrders.length === 0 ? (
+            <div>
+              <h2 className="text-3xl font-black font-display tracking-tight mb-8">Historial de pedidos</h2>
+
+              {allClientOrders.length === 0 ? (
                 <div className="text-center py-12">
                   <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-xl font-bold text-gray-900 mb-2">No tienes pedidos todavía</h3>
-                  <p className="text-gray-400">Cuando hagas pedidos, verás activos e historial aquí</p>
+                  <p className="text-gray-400">Cuando hagas pedidos, verás todo tu historial aquí</p>
                 </div>
               ) : (
-                <div className="space-y-8">
-                  {activeOrders.length > 0 && (
-                    <div>
-                      <h3 className="text-lg font-black text-gray-900 mb-3">Pedidos activos</h3>
-                      <div className="space-y-4">
-                        {activeOrders.map(order => (
-                          <div key={order.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                            <div className="flex justify-between items-start mb-4">
-                              <div>
-                                <h3 className="font-bold text-lg">Pedido #{order.id.slice(-8)}</h3>
-                                <p className="text-sm text-gray-400">{new Date(order.createdAt).toLocaleDateString()}</p>
-                              </div>
-                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                order.status === 'pending'    ? 'bg-yellow-100 text-yellow-700' :
-                                order.status === 'accepted'   ? 'bg-cyan-100 text-cyan-700' :
-                                order.status === 'preparing'  ? 'bg-amber-100 text-amber-700' :
-                                order.status === 'ready'      ? 'bg-purple-100 text-purple-700' :
-                                order.status === 'on_the_way' ? 'bg-blue-100 text-blue-700' :
-                                order.status === 'arrived'    ? 'bg-teal-100 text-teal-700' :
-                                order.status === 'delivered'  ? 'bg-green-100 text-green-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
-                                {order.status === 'pending'    ? 'Pedido recibido' :
-                                 order.status === 'accepted'   ? 'Aceptado' :
-                                 order.status === 'preparing'  ? 'Preparando' :
-                                 order.status === 'ready'      ? 'Listo para envío' :
-                                 order.status === 'on_the_way' ? 'En camino 🛵' :
-                                 order.status === 'arrived'    ? '¡Repartidor llegó!' :
-                                 order.status === 'delivered'  ? 'Entregado ✓' :
-                                 order.status}
-                              </span>
-                            </div>
-
-                            <div className="space-y-2 mb-4">
-                              {order.items?.map(item => (
-                                <div key={item.id} className="flex justify-between text-sm">
-                                  <span>{item.quantity}x {item.name}</span>
-                                  <span>RD$ {item.price * item.quantity}</span>
-                                </div>
-                              ))}
-                            </div>
-
-                            <div className="pt-4 border-t flex justify-between items-center gap-3">
-                              <span className="font-bold text-lg">RD$ {order.total}</span>
-                              <div className="flex flex-col items-end gap-2">
-                                <button
-                                  onClick={() => setView('tracking')}
-                                  className="text-primary font-medium hover:text-primary/80 transition-colors"
-                                >
-                                  Ver detalles →
-                                </button>
-                                {canClientCancelOrder(order) && (
-                                  <button
-                                    onClick={() => handleClientCancelOrder(order)}
-                                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                                  >
-                                    Cancelar pedido (restan {getOrderCancelTimeLeftText(order)} min)
-                                  </button>
-                                )}
-                              </div>
-                            </div>
+                <div className="space-y-4">
+                  {allClientOrders.map(order => {
+                    const displayDate = order.deliveredAt || order.cancelledAt || order.createdAt;
+                    const isInProcess = order.status !== 'delivered' && order.status !== 'cancelled';
+                    return (
+                      <div key={order.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{order.businessName || 'Negocio no disponible'}</p>
+                            <p className="text-xs text-gray-500">Pedido #{order.id.slice(-8).toUpperCase()}</p>
                           </div>
-                        ))}
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${getClientOrderStatusSummaryStyles(order.status)}`}>
+                            {getClientOrderStatusSummary(order.status)}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                            <p className="text-gray-500 font-semibold">Fecha</p>
+                            <p className="font-bold text-gray-900">{new Date(displayDate).toLocaleDateString()}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                            <p className="text-gray-500 font-semibold">Hora</p>
+                            <p className="font-bold text-gray-900">{new Date(displayDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                            <p className="text-gray-500 font-semibold">Total</p>
+                            <p className="font-bold text-gray-900">RD$ {(order.total || 0).toFixed(0)}</p>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 border-t flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            onClick={() => setSelectedClientHistoryOrder(order)}
+                            className="px-4 py-2 rounded-xl bg-primary/10 text-primary font-bold text-sm hover:bg-primary/20 transition-colors"
+                          >
+                            Ver detalles
+                          </button>
+                          {isInProcess && (
+                            <button
+                              onClick={() => {
+                                setActiveOrderId(order.id);
+                                setView('tracking');
+                              }}
+                              className="px-4 py-2 rounded-xl bg-blue-100 text-blue-700 font-bold text-sm hover:bg-blue-200 transition-colors"
+                            >
+                              Ver seguimiento
+                            </button>
+                          )}
+                          {canClientCancelOrder(order) && (
+                            <button
+                              onClick={() => handleClientCancelOrder(order)}
+                              className="text-xs font-bold px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                            >
+                              Cancelar pedido (restan {getOrderCancelTimeLeftText(order)} min)
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  {deliveredOrders.length > 0 && (
-                    <div>
-                      <h3 className="text-lg font-black text-gray-900 mb-3">Historial (facturas entregadas)</h3>
-                      <div className="space-y-4">
-                        {deliveredOrders.map(order => {
-                          const deliveredDate = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.createdAt);
-                          return (
-                            <div key={order.id} className="bg-emerald-50 rounded-2xl p-6 border border-emerald-200">
-                              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                                <div>
-                                  <h4 className="font-black text-emerald-900">Factura #{order.id.slice(-8)}</h4>
-                                  <p className="text-sm text-emerald-700">{order.businessName}</p>
-                                </div>
-                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-200 text-emerald-800">
-                                  Entregado ✓
-                                </span>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
-                                <div className="bg-white/80 rounded-xl p-3 border border-emerald-100">
-                                  <p className="text-emerald-700 font-semibold">Fecha</p>
-                                  <p className="font-bold text-emerald-900">{deliveredDate.toLocaleDateString()}</p>
-                                </div>
-                                <div className="bg-white/80 rounded-xl p-3 border border-emerald-100">
-                                  <p className="text-emerald-700 font-semibold">Hora</p>
-                                  <p className="font-bold text-emerald-900">{deliveredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                </div>
-                                <div className="bg-white/80 rounded-xl p-3 border border-emerald-100">
-                                  <p className="text-emerald-700 font-semibold">Duración entrega</p>
-                                  <p className="font-bold text-emerald-900">{order.deliveryDurationMinutes ? `${order.deliveryDurationMinutes} min` : 'No disponible'}</p>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2 mb-4">
-                                {order.items?.map(item => (
-                                  <div key={item.id} className="flex justify-between text-sm text-emerald-900">
-                                    <span>{item.quantity}x {item.name}</span>
-                                    <span>RD$ {(item.price || 0) * (item.quantity || 0)}</span>
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="pt-4 border-t border-emerald-200 space-y-1 text-sm">
-                                <div className="flex justify-between text-emerald-800">
-                                  <span>Subtotal artículos</span>
-                                  <span>RD$ {order.subtotal || 0}</span>
-                                </div>
-                                <div className="flex justify-between text-emerald-800">
-                                  <span>Delivery</span>
-                                  <span>RD$ {order.deliveryFee || 0}</span>
-                                </div>
-                                <div className="flex justify-between text-lg font-black text-emerald-900 pt-1">
-                                  <span>Total pagado</span>
-                                  <span>RD$ {order.total || 0}</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {cancelledOrders.length > 0 && (
-                    <div>
-                      <h3 className="text-lg font-black text-gray-900 mb-3">Pedidos cancelados</h3>
-                      <div className="space-y-4">
-                        {cancelledOrders.map(order => {
-                          const cancelledDate = order.cancelledAt ? new Date(order.cancelledAt) : new Date(order.createdAt);
-                          return (
-                            <div key={order.id} className="bg-red-50 rounded-2xl p-6 border border-red-200">
-                              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                                <div>
-                                  <h4 className="font-black text-red-900">Pedido #{order.id.slice(-8)}</h4>
-                                  <p className="text-sm text-red-700">{order.businessName}</p>
-                                </div>
-                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-200 text-red-800">
-                                  Cancelado
-                                </span>
-                              </div>
-                              <p className="text-sm text-red-700 mb-3">
-                                {order.cancellationReason || 'Cancelado por el cliente'}
-                              </p>
-                              <p className="text-xs text-red-700 font-semibold">
-                                {cancelledDate.toLocaleDateString()} · {cancelledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
               )}
             </div>
