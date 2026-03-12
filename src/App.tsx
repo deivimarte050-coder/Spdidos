@@ -11,7 +11,7 @@ import Auth from './components/Auth';
 import DeliveryView from './views/DeliveryView';
 import BusinessView from './views/BusinessView';
 import AdminView from './views/AdminView';
-import { CartItem, View, Order, BusinessDayKey, MenuItem } from './types';
+import { CartItem, View, Order, BusinessDayKey, MenuItem, AppNotification } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
 import FirebaseServiceV2, { HomeAnnouncement } from './services/FirebaseServiceV2';
@@ -880,7 +880,7 @@ function AppContent() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [deliveryLocation, setDeliveryLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
-  const [hasUnreadNotificationAlert, setHasUnreadNotificationAlert] = useState(false);
+  const [userNotifications, setUserNotifications] = useState<AppNotification[]>([]);
   const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
   const [pendingSharedTarget, setPendingSharedTarget] = useState<{ businessId: string; itemId?: string; imageUrl?: string } | null>(null);
   const [forceAuthForSharedOrder, setForceAuthForSharedOrder] = useState(false);
@@ -907,21 +907,8 @@ function AppContent() {
   const deliveryKnownReadyIds  = useRef<Set<string>>(new Set());
   const deliveryGlobalInited   = useRef(false);
 
-  const getNotificationAlertStorageKey = (userId: string) => `client_notification_alert_${userId}`;
-
-  const persistNotificationAlert = (nextValue: boolean) => {
-    setHasUnreadNotificationAlert(nextValue);
-    if (!user?.id || user.role !== 'client') return;
-    try {
-      localStorage.setItem(getNotificationAlertStorageKey(user.id), nextValue ? '1' : '0');
-    } catch {
-      // ignore localStorage errors
-    }
-  };
-
   const handleNotificationBellClick = () => {
-    setView('orders');
-    persistNotificationAlert(false);
+    setView('notifications');
   };
 
   const handleInstallApp = async () => {
@@ -939,19 +926,6 @@ function AppContent() {
       setCanInstallApp(false);
     }
   };
-
-  useEffect(() => {
-    if (!user?.id || user.role !== 'client') {
-      setHasUnreadNotificationAlert(false);
-      return;
-    }
-    try {
-      const saved = localStorage.getItem(getNotificationAlertStorageKey(user.id));
-      setHasUnreadNotificationAlert(saved === '1');
-    } catch {
-      setHasUnreadNotificationAlert(false);
-    }
-  }, [user?.id, user?.role]);
 
   useEffect(() => {
     const onBeforeInstallPrompt = (event: Event) => {
@@ -1006,13 +980,24 @@ function AppContent() {
       );
     });
     const unsubForeground = listenFCMForeground(() => {
-      if (user.role === 'client') {
-        persistNotificationAlert(true);
-      }
+      // Las notificaciones del panel admin se sincronizan por Firestore en tiempo real
     });
     return () => {
       unsubForeground?.();
     };
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!user?.id || user.role !== 'client') {
+      setUserNotifications([]);
+      return;
+    }
+
+    const unsub = FirebaseServiceV2.subscribeToUserNotifications(user.id, (notifications) => {
+      setUserNotifications(notifications);
+    });
+
+    return () => unsub();
   }, [user?.id, user?.role]);
 
   useEffect(() => {
@@ -1064,7 +1049,6 @@ function AppContent() {
         if (o.status === 'arrived' && !arrivedNotifiedIds.current.has(o.id)) {
           arrivedNotifiedIds.current.add(o.id);
           setArrivedOrderId(o.id);
-          persistNotificationAlert(true);
           soundService.startRinging();
           showPushNotification('¡Tu repartidor llegó! 🛵', 'Está en tu puerta esperando — abre la app para confirmar', 'arrived');
         }
@@ -1587,6 +1571,25 @@ function AppContent() {
       const bTime = new Date((b.deliveredAt || b.cancelledAt || b.createdAt) as string).getTime();
       return bTime - aTime;
     });
+  const unreadNotificationsCount = userNotifications.filter((item) => item.status === 'unread').length;
+  const hasUnreadNotificationAlert = unreadNotificationsCount > 0;
+
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    try {
+      await FirebaseServiceV2.markNotificationAsRead(notificationId);
+    } catch (error) {
+      console.error('Error marcando notificación como leída:', error);
+    }
+  };
+
+  const handleMarkAllNotificationsAsRead = async () => {
+    if (!user?.id) return;
+    try {
+      await FirebaseServiceV2.markAllUserNotificationsAsRead(user.id);
+    } catch (error) {
+      console.error('Error marcando todas las notificaciones como leídas:', error);
+    }
+  };
 
   const handleHomeCategorySelect = (categoryId: string) => {
     if (categoryId === 'restaurants') {
@@ -1930,6 +1933,7 @@ function AppContent() {
       showCartHint={showCartHint}
       onCartHintDismiss={() => setShowCartHint(false)}
       orderCount={activeOrders.length}
+      notificationCount={unreadNotificationsCount}
       hasUnreadNotificationAlert={hasUnreadNotificationAlert}
       onNotificationBellClick={handleNotificationBellClick}
     >
@@ -2547,6 +2551,67 @@ function AppContent() {
               onCancelOrder={handleClientCancelOrder}
               onBack={() => { setView('home'); setActiveOrderId(null); setDeliveryLocation(null); }}
             />
+          </motion.div>
+        )}
+
+        {view === 'notifications' && (
+          <motion.div
+            key="notifications"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-8 px-4 lg:px-0"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-3xl font-black font-display tracking-tight">Notificaciones</h2>
+              <button
+                onClick={handleMarkAllNotificationsAsRead}
+                disabled={unreadNotificationsCount === 0}
+                className="px-3 py-2 rounded-xl text-xs font-black bg-primary/10 text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Marcar todas como leídas
+              </button>
+            </div>
+
+            {userNotifications.length === 0 ? (
+              <div className="text-center py-12">
+                <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-gray-900 mb-2">No tienes notificaciones</h3>
+                <p className="text-gray-400">Cuando recibas una, aparecerá aquí</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {userNotifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    className={`rounded-2xl p-5 border ${notification.status === 'unread' ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-gray-900">{notification.title}</p>
+                        <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                        <p className="text-xs text-gray-400 mt-3">
+                          {new Date(notification.createdAt).toLocaleDateString()} · {new Date(notification.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${notification.status === 'unread' ? 'bg-amber-200 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {notification.status === 'unread' ? 'No leída' : 'Leída'}
+                        </span>
+                        {notification.status === 'unread' && (
+                          <button
+                            onClick={() => handleMarkNotificationAsRead(notification.id)}
+                            className="text-xs font-bold text-primary hover:text-primary/80"
+                          >
+                            Marcar como leída
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
 

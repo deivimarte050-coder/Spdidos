@@ -171,4 +171,16 @@ export interface CartItem {
   notes?: string;
 }
 
-export type View = 'home' | 'restaurants' | 'restaurant' | 'tracking' | 'orders' | 'profile' | 'addresses' | 'favorites' | 'history' | 'settings' | 'business';
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  status: 'unread' | 'read';
+  createdAt: string;
+  readAt?: string;
+  targetRole?: 'client' | 'business' | 'delivery' | 'all';
+  source?: 'admin' | 'system' | 'order';
+}
+
+export type View = 'home' | 'restaurants' | 'restaurant' | 'tracking' | 'orders' | 'notifications' | 'profile' | 'addresses' | 'favorites' | 'history' | 'settings' | 'business';

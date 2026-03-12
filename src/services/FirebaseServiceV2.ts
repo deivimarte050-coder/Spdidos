@@ -12,11 +12,12 @@ import {
   onSnapshot,
   Timestamp,
   DocumentData,
-  setDoc
+  setDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadString } from 'firebase/storage';
 import { db, storage } from '../firebase/config';
-import { User, Order } from '../types';
+import { User, Order, AppNotification } from '../types';
 
 export interface HomeAnnouncement {
   topText: string;
@@ -34,6 +35,7 @@ const COLLECTIONS = {
   DELIVERY_PERSONS: 'deliveryPersons',
   DELIVERY_EARNINGS: 'delivery_earnings',
   ADMIN_NOTIFICATIONS: 'admin_notifications',
+  USER_NOTIFICATIONS: 'user_notifications',
   DELIVERY_LOCATIONS: 'delivery_locations',
   CLIENT_LOCATIONS: 'client_locations',
   FCM_TOKENS: 'fcm_tokens',
@@ -528,6 +530,130 @@ class FirebaseServiceV2 {
       });
     } catch (error) {
       console.error('❌ [FirebaseV2] Error encolando notificación admin:', error);
+      throw error;
+    }
+  }
+
+  async createInAppNotificationsForTarget(data: {
+    title: string;
+    body: string;
+    target: 'clients' | 'businesses' | 'delivery' | 'both' | 'all';
+    createdBy?: string;
+  }): Promise<void> {
+    try {
+      const targetRoles: Array<'client' | 'business' | 'delivery'> =
+        data.target === 'clients'
+          ? ['client']
+          : data.target === 'businesses'
+          ? ['business']
+          : data.target === 'delivery'
+          ? ['delivery']
+          : data.target === 'both'
+          ? ['client', 'business']
+          : ['client', 'business', 'delivery'];
+
+      const userIds = new Set<string>();
+      for (const role of targetRoles) {
+        const usersSnapshot = await getDocs(query(collection(db, COLLECTIONS.USERS), where('role', '==', role)));
+        usersSnapshot.docs.forEach((userDoc) => userIds.add(userDoc.id));
+      }
+
+      if (userIds.size === 0) return;
+
+      const batch = writeBatch(db);
+      const now = Timestamp.now();
+      userIds.forEach((userId) => {
+        const notificationRef = doc(collection(db, COLLECTIONS.USER_NOTIFICATIONS));
+        batch.set(notificationRef, {
+          userId,
+          title: data.title,
+          message: data.body,
+          status: 'unread',
+          source: 'admin',
+          targetRole: data.target === 'all' ? 'all' : undefined,
+          createdBy: data.createdBy || null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      });
+
+      await batch.commit();
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error creando notificaciones in-app:', error);
+      throw error;
+    }
+  }
+
+  subscribeToUserNotifications(userId: string, callback: (notifications: AppNotification[]) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.USER_NOTIFICATIONS),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+
+    return onSnapshot(q, (snap) => {
+      const notifications = snap.docs.map((d) => {
+        const data = d.data() as any;
+        const createdAt = data.createdAt instanceof Timestamp
+          ? data.createdAt.toDate().toISOString()
+          : String(data.createdAt || new Date().toISOString());
+        const readAt = data.readAt instanceof Timestamp
+          ? data.readAt.toDate().toISOString()
+          : (data.readAt ? String(data.readAt) : undefined);
+
+        return {
+          id: d.id,
+          userId: String(data.userId || ''),
+          title: String(data.title || ''),
+          message: String(data.message || ''),
+          status: data.status === 'read' ? 'read' : 'unread',
+          createdAt,
+          readAt,
+          targetRole: data.targetRole,
+          source: data.source,
+        } as AppNotification;
+      });
+
+      callback(notifications);
+    }, (err) => console.error('❌ [FirebaseV2] subscribeToUserNotifications error:', err));
+  }
+
+  async markNotificationAsRead(notificationId: string): Promise<void> {
+    try {
+      const ref = doc(db, COLLECTIONS.USER_NOTIFICATIONS, notificationId);
+      await updateDoc(ref, {
+        status: 'read',
+        readAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error marcando notificación como leída:', error);
+      throw error;
+    }
+  }
+
+  async markAllUserNotificationsAsRead(userId: string): Promise<void> {
+    try {
+      const q = query(
+        collection(db, COLLECTIONS.USER_NOTIFICATIONS),
+        where('userId', '==', userId),
+        where('status', '==', 'unread')
+      );
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return;
+
+      const batch = writeBatch(db);
+      const now = Timestamp.now();
+      snapshot.docs.forEach((item) => {
+        batch.update(item.ref, {
+          status: 'read',
+          readAt: now,
+          updatedAt: now,
+        });
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error marcando todas como leídas:', error);
       throw error;
     }
   }

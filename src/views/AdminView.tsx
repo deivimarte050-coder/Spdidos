@@ -210,6 +210,12 @@ const AdminView: React.FC = () => {
         target: notificationForm.target,
         createdBy: user?.id,
       });
+      await FirebaseServiceV2.createInAppNotificationsForTarget({
+        title,
+        body,
+        target: notificationForm.target,
+        createdBy: user?.id,
+      });
       alert('✅ Notificación enviada.');
       setNotificationForm((prev) => ({ ...prev, title: '', body: '' }));
     } catch (error: any) {

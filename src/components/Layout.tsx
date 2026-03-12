@@ -16,6 +16,7 @@ interface LayoutProps {
   showCartHint?: boolean;
   onCartHintDismiss?: () => void;
   orderCount?: number;
+  notificationCount?: number;
   hasUnreadNotificationAlert?: boolean;
   onNotificationBellClick?: () => void;
 }
@@ -38,6 +39,7 @@ const Layout: React.FC<LayoutProps> = ({
   showCartHint = false,
   onCartHintDismiss,
   orderCount = 0,
+  notificationCount = 0,
   hasUnreadNotificationAlert = false,
   onNotificationBellClick,
 }) => {
@@ -125,9 +127,9 @@ const Layout: React.FC<LayoutProps> = ({
             title={hasUnreadNotificationAlert ? 'Atención: tienes una nueva notificación' : 'Notificaciones'}
           >
             <Bell className="w-5 h-5" />
-            {orderCount > 0 && (
+            {notificationCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
-                {orderCount}
+                {notificationCount > 9 ? '9+' : notificationCount}
               </span>
             )}
             {hasUnreadNotificationAlert && (
@@ -200,9 +202,9 @@ const Layout: React.FC<LayoutProps> = ({
             title={hasUnreadNotificationAlert ? 'Atención: tienes una nueva notificación' : 'Notificaciones'}
           >
             <Bell className="w-5 h-5" />
-            {orderCount > 0 && (
+            {notificationCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
-                {orderCount}
+                {notificationCount > 9 ? '9+' : notificationCount}
               </span>
             )}
             {hasUnreadNotificationAlert && (
