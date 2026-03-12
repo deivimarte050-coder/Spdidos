@@ -9,9 +9,9 @@
  * element so later autoplay calls succeed even from Firestore callbacks.
  */
 
-/** Build a WAV data-URI: two 440+480 Hz beeps separated by silence. */
+/** Build a louder WAV data-URI tuned for mobile speakers. */
 function buildRingWav(): string {
-  const SR   = 8000;   // sample rate (Hz)
+  const SR   = 16000;  // better clarity on mobile speakers
   const dur  = 2.2;    // total seconds (matches loop interval)
   const nSmp = Math.floor(SR * dur);
   const buf  = new ArrayBuffer(44 + nSmp * 2);
@@ -27,13 +27,15 @@ function buildRingWav(): string {
 
   for (let i = 0; i < nSmp; i++) {
     const t = i / SR;
-    // Beep 1: 0.00–0.38 s   Beep 2: 0.50–0.88 s   rest: silence
-    const on = (t < 0.38) || (t >= 0.50 && t < 0.88);
-    const amp = on
-      ? 0.28 * Math.sin(2 * Math.PI * 440 * t) +
-        0.28 * Math.sin(2 * Math.PI * 480 * t)
+    // Beep 1: 0.00–0.42 s   Beep 2: 0.56–1.04 s   rest: silence
+    const on = (t < 0.42) || (t >= 0.56 && t < 1.04);
+    const mixed = on
+      ? 0.42 * Math.sin(2 * Math.PI * 860 * t) +
+        0.35 * Math.sin(2 * Math.PI * 1180 * t) +
+        0.18 * Math.sin(2 * Math.PI * 1720 * t)
       : 0;
-    dv.setInt16(44 + i * 2, Math.round(amp * 32767), true);
+    const shaped = Math.tanh(mixed * 1.8);
+    dv.setInt16(44 + i * 2, Math.round(shaped * 32767), true);
   }
 
   const bytes = new Uint8Array(buf);
@@ -44,7 +46,7 @@ function buildRingWav(): string {
 
 /** Build a sharper alert WAV for client-cancelled orders. */
 function buildCancelledRingWav(): string {
-  const SR   = 8000;
+  const SR   = 16000;
   const dur  = 1.4;
   const nSmp = Math.floor(SR * dur);
   const buf  = new ArrayBuffer(44 + nSmp * 2);
@@ -61,14 +63,16 @@ function buildCancelledRingWav(): string {
   for (let i = 0; i < nSmp; i++) {
     const t = i / SR;
     const on =
-      (t < 0.18) ||
-      (t >= 0.24 && t < 0.42) ||
-      (t >= 0.48 && t < 0.66);
-    const amp = on
-      ? 0.35 * Math.sin(2 * Math.PI * 760 * t) +
-        0.25 * Math.sin(2 * Math.PI * 1020 * t)
+      (t < 0.20) ||
+      (t >= 0.26 && t < 0.46) ||
+      (t >= 0.52 && t < 0.74);
+    const mixed = on
+      ? 0.50 * Math.sin(2 * Math.PI * 980 * t) +
+        0.30 * Math.sin(2 * Math.PI * 1420 * t) +
+        0.16 * Math.sin(2 * Math.PI * 1960 * t)
       : 0;
-    dv.setInt16(44 + i * 2, Math.round(amp * 32767), true);
+    const shaped = Math.tanh(mixed * 2);
+    dv.setInt16(44 + i * 2, Math.round(shaped * 32767), true);
   }
 
   const bytes = new Uint8Array(buf);
@@ -81,6 +85,7 @@ class SoundService {
   private audio: HTMLAudioElement;
   private cancelledAudio: HTMLAudioElement;
   private activeAudio: HTMLAudioElement | null = null;
+  private audioContext: AudioContext | null = null;
   private active = false;
   private warmedUp = false;
 
@@ -88,10 +93,16 @@ class SoundService {
     this.audio       = new Audio(buildRingWav());
     this.audio.loop  = true;
     this.audio.volume = 1;
+    this.audio.preload = 'auto';
+    this.audio.setAttribute('playsinline', 'true');
 
     this.cancelledAudio = new Audio(buildCancelledRingWav());
     this.cancelledAudio.loop = true;
     this.cancelledAudio.volume = 1;
+    this.cancelledAudio.preload = 'auto';
+    this.cancelledAudio.setAttribute('playsinline', 'true');
+
+    this.setupLoudPlaybackPipeline();
 
     // Warm up: play-then-pause on first user interaction so later calls
     // from Firestore callbacks are guaranteed to succeed.
@@ -100,6 +111,7 @@ class SoundService {
     const warmUp = () => {
       if (this.warmedUp) return;
       this.warmedUp = true;
+      this.audioContext?.resume().catch(() => {});
       [this.audio, this.cancelledAudio].forEach((audioEl) => {
         audioEl.play().then(() => {
           if (!this.active) {
@@ -113,6 +125,27 @@ class SoundService {
     document.addEventListener('click',    warmUp, { passive: true });
     document.addEventListener('touchend', warmUp, { passive: true });
     document.addEventListener('keydown',  warmUp, { passive: true });
+  }
+
+  private setupLoudPlaybackPipeline() {
+    try {
+      const ctx = new AudioContext();
+      this.audioContext = ctx;
+
+      const ringSource = ctx.createMediaElementSource(this.audio);
+      const ringGain = ctx.createGain();
+      ringGain.gain.value = 2.6;
+      ringSource.connect(ringGain);
+      ringGain.connect(ctx.destination);
+
+      const cancelledSource = ctx.createMediaElementSource(this.cancelledAudio);
+      const cancelledGain = ctx.createGain();
+      cancelledGain.gain.value = 2.9;
+      cancelledSource.connect(cancelledGain);
+      cancelledGain.connect(ctx.destination);
+    } catch {
+      this.audioContext = null;
+    }
   }
 
   /** Plays a completely inaudible 1-sample loop via Web Audio API.
@@ -151,6 +184,7 @@ class SoundService {
     this.active = true;
     this.activeAudio = audioEl;
     audioEl.currentTime = 0;
+    this.audioContext?.resume().catch(() => {});
     audioEl.play().catch(() => {
       // Last resort: try again on next tick (handles edge-case timing)
       setTimeout(() => {
