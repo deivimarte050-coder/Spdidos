@@ -134,6 +134,9 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700 border-red-200'
 };
 
+const ACTIVE_ORDER_STATUSES: Array<Order['status']> = ['pending', 'accepted', 'preparing', 'ready'];
+const FINALIZED_ORDER_STATUSES: Array<Order['status']> = ['delivered', 'cancelled'];
+
 // Navigation helpers
 const openGoogleMaps = (lat: number, lng: number) => {
   window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
@@ -281,20 +284,20 @@ const BusinessOrders: React.FC = () => {
   };
 
   const filtered = orders.filter(o => {
-    if (filter === 'active') return o.status !== 'delivered';
+    if (filter === 'active') return ACTIVE_ORDER_STATUSES.includes(o.status);
     if (filter === 'pending') return o.status === 'pending';
     if (filter === 'preparing') return ['accepted', 'preparing'].includes(o.status);
     if (filter === 'ready') return o.status === 'ready';
-    if (filter === 'done') return ['delivered', 'cancelled'].includes(o.status);
+    if (filter === 'done') return FINALIZED_ORDER_STATUSES.includes(o.status);
     return true;
   });
 
   const counts = {
-    active: orders.filter(o => o.status !== 'delivered').length,
+    active: orders.filter(o => ACTIVE_ORDER_STATUSES.includes(o.status)).length,
     pending: orders.filter(o => o.status === 'pending').length,
     preparing: orders.filter(o => ['accepted', 'preparing'].includes(o.status)).length,
     ready: orders.filter(o => o.status === 'ready').length,
-    done: orders.filter(o => ['delivered', 'cancelled'].includes(o.status)).length,
+    done: orders.filter(o => FINALIZED_ORDER_STATUSES.includes(o.status)).length,
   };
 
   if (loading) return (

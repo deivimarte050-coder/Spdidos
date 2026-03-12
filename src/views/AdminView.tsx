@@ -58,6 +58,9 @@ const normalizeBusinessLocation = (business: any): [number, number] | null => {
   return null;
 };
 
+const ACTIVE_ORDER_STATUSES = ['pending', 'accepted', 'preparing', 'ready'];
+const FINALIZED_ORDER_STATUSES = ['delivered', 'cancelled'];
+
 const AdminView: React.FC = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports' | 'announcements' | 'notifications'>('dashboard');
@@ -530,6 +533,13 @@ const AdminView: React.FC = () => {
         DataService.saveUsers(allUsers);
       }
     }
+  };
+
+  const formatDateInputValue = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
   };
 
   const getStatusColor = (status: string) => {
@@ -1189,11 +1199,11 @@ const AdminView: React.FC = () => {
                   { key: 'done', label: 'Finalizados' },
                   { key: 'all', label: 'Todos' },
                 ].map(f => {
-                  const count = f.key === 'active' ? orders.filter(o => !['delivered','cancelled'].includes(o.status)).length
+                  const count = f.key === 'active' ? orders.filter(o => ACTIVE_ORDER_STATUSES.includes(o.status)).length
                     : f.key === 'pending' ? orders.filter(o => o.status === 'pending').length
                     : f.key === 'ready' ? orders.filter(o => o.status === 'ready').length
                     : f.key === 'on_the_way' ? orders.filter(o => o.status === 'on_the_way').length
-                    : f.key === 'done' ? orders.filter(o => ['delivered','cancelled'].includes(o.status)).length
+                    : f.key === 'done' ? orders.filter(o => FINALIZED_ORDER_STATUSES.includes(o.status)).length
                     : orders.length;
                   return (
                     <button key={f.key} onClick={() => setOrderFilter(f.key)}
@@ -1207,11 +1217,11 @@ const AdminView: React.FC = () => {
 
               <div className="space-y-3">
                 {orders.filter(o => {
-                  if (orderFilter === 'active') return !['delivered','cancelled'].includes(o.status);
+                  if (orderFilter === 'active') return ACTIVE_ORDER_STATUSES.includes(o.status);
                   if (orderFilter === 'pending') return o.status === 'pending';
                   if (orderFilter === 'ready') return o.status === 'ready';
                   if (orderFilter === 'on_the_way') return o.status === 'on_the_way' || o.status === 'picked_up';
-                  if (orderFilter === 'done') return ['delivered','cancelled'].includes(o.status);
+                  if (orderFilter === 'done') return FINALIZED_ORDER_STATUSES.includes(o.status);
                   return true;
                 }).map(order => {
                   const STATUS_LABELS: Record<string, string> = { pending: 'Pendiente', accepted: 'Aceptado', preparing: 'Preparando', ready: 'Listo', on_the_way: 'En Camino', picked_up: 'Recogido', delivered: 'Entregado', cancelled: 'Cancelado' };
@@ -1285,11 +1295,11 @@ const AdminView: React.FC = () => {
                   );
                 })}
                 {orders.filter(o => {
-                  if (orderFilter === 'active') return !['delivered','cancelled'].includes(o.status);
+                  if (orderFilter === 'active') return ACTIVE_ORDER_STATUSES.includes(o.status);
                   if (orderFilter === 'pending') return o.status === 'pending';
                   if (orderFilter === 'ready') return o.status === 'ready';
                   if (orderFilter === 'on_the_way') return o.status === 'on_the_way' || o.status === 'picked_up';
-                  if (orderFilter === 'done') return ['delivered','cancelled'].includes(o.status);
+                  if (orderFilter === 'done') return FINALIZED_ORDER_STATUSES.includes(o.status);
                   return true;
                 }).length === 0 && (
                   <div className="bg-white p-12 rounded-2xl border border-dashed border-gray-200 text-center">
