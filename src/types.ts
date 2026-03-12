@@ -156,6 +156,8 @@ export interface Order {
   cancelledAt?: string;
   cancellationReason?: string;
   cancelledByClient?: boolean;
+  arrivedAcknowledgedAt?: string;
+  arrivedAcknowledgedByClientId?: string;
   transferBankName?: string;
   transferAccountNumber?: string;
   transferAccountHolder?: string;

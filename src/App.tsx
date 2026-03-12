@@ -1102,10 +1102,12 @@ function AppContent() {
 
     // Latest snapshot kept so visibilitychange can re-check immediately
     let latestActive: Order[] = [];
+    const isArrivedAcknowledged = (order: Order) =>
+      !!order.arrivedAcknowledgedAt || !!order.arrivedAcknowledgedByClientId;
 
     const notify = (orders: Order[]) => {
       orders.forEach(o => {
-        if (o.status === 'arrived' && !arrivedNotifiedIds.current.has(o.id)) {
+        if (o.status === 'arrived' && !isArrivedAcknowledged(o) && !arrivedNotifiedIds.current.has(o.id)) {
           arrivedNotifiedIds.current.add(o.id);
           setArrivedOrderId(o.id);
           soundService.startRinging();
@@ -1142,7 +1144,7 @@ function AppContent() {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       latestActive
-        .filter(o => o.status === 'arrived')
+        .filter(o => o.status === 'arrived' && !isArrivedAcknowledged(o))
         .forEach(o => arrivedNotifiedIds.current.delete(o.id));
       notify(latestActive);
     };
@@ -1262,9 +1264,19 @@ function AppContent() {
     return () => { unsub(); soundService.stopRinging(); };
   }, [user?.role, user?.id]);
 
-  const handleConfirmArrival = () => {
+  const handleConfirmArrival = async () => {
+    const currentArrivedOrderId = arrivedOrderId;
     soundService.stopRinging();
     setArrivedOrderId(null);
+    if (!currentArrivedOrderId || !user?.id) return;
+    try {
+      await FirebaseServiceV2.updateOrder(currentArrivedOrderId, {
+        arrivedAcknowledgedAt: new Date().toISOString(),
+        arrivedAcknowledgedByClientId: user.id,
+      });
+    } catch (error) {
+      console.error('Error confirmando llegada del repartidor:', error);
+    }
   };
 
   // Subscribe to delivery location only once order is ready (or later)
