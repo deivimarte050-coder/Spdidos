@@ -17,35 +17,65 @@ async function getTokens(
     q = q.where(k, '==', v) as any;
   }
   const snap = await q.get();
-  return snap.docs
+  return Array.from(new Set(snap.docs
     .map(d => (d.data() as any).token as string)
-    .filter(Boolean);
+    .filter(Boolean)));
 }
 
 async function sendTo(tokens: string[], title: string, body: string, tag: string) {
   if (!tokens.length) return;
-  await messaging.sendEachForMulticast({
+  const response = await messaging.sendEachForMulticast({
     tokens,
     notification: { title, body },
     android: {
       priority: 'high',
+      ttl: 2419200000,
       notification: { channelId: 'spdidos_high', sound: 'default' },
     },
     apns: {
+      headers: { 'apns-priority': '10' },
       payload: { aps: { sound: 'default', badge: 1, contentAvailable: true } },
     },
     webpush: {
+      headers: {
+        Urgency: 'high',
+        TTL: '2419200',
+      },
       notification: {
         icon:              '/logo_high_resolution.png',
         badge:             '/logo_high_resolution.png',
         requireInteraction: true,
         vibrate:           [300, 100, 300, 100, 300],
+        silent:            false,
         tag,
       },
       fcmOptions: { link: '/' },
     },
-    data: { tag },
+    data: {
+      tag,
+      title,
+      body,
+      url: '/',
+      link: '/',
+    },
   });
+
+  const invalidTokens = response.responses
+    .map((r, i) => ({ r, token: tokens[i] }))
+    .filter(({ r }) => !r.success && (
+      r.error?.code === 'messaging/registration-token-not-registered'
+      || r.error?.code === 'messaging/invalid-registration-token'
+    ))
+    .map(({ token }) => token);
+
+  if (!invalidTokens.length) return;
+
+  const batch = db.batch();
+  for (const token of invalidTokens) {
+    const tokenSnap = await db.collection('fcm_tokens').where('token', '==', token).get();
+    tokenSnap.docs.forEach((d) => batch.delete(d.ref));
+  }
+  await batch.commit();
 }
 
 // ─── Trigger 1: new order → notify business ───────────────────────────────────
@@ -69,6 +99,9 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
   if (!before || !after) return;
   if (before['status'] === after['status']) return;
 
+  const status = String(after['status'] || '');
+  const clientId = String(after['clientId'] || '');
+
   // Pedido listo → avisar a todos los repartidores disponibles
   if (after['status'] === 'ready') {
     const tokens = await getTokens('delivery');
@@ -81,17 +114,49 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
     return;
   }
 
-  // Repartidor llegó → avisar al cliente
-  if (after['status'] === 'arrived') {
-    const tokens = await getTokens('client', { userId: after['clientId'] });
-    await sendTo(
-      tokens,
-      '¡Tu repartidor llegó! 🛵',
-      'Está en tu puerta esperando — abre la app para confirmar',
-      'arrived'
-    );
-    return;
-  }
+  const clientStatusMessages: Record<string, { title: string; body: string; tag: string }> = {
+    accepted: {
+      title: 'Pedido aceptado ✅',
+      body: `${String(after['businessName'] || 'El negocio')} aceptó tu pedido.`,
+      tag: 'client-accepted',
+    },
+    preparing: {
+      title: 'Pedido en preparación 🍳',
+      body: `${String(after['businessName'] || 'El negocio')} está preparando tu pedido.`,
+      tag: 'client-preparing',
+    },
+    picked_up: {
+      title: 'Pedido en camino 🛵',
+      body: 'Tu repartidor ya recogió el pedido y va hacia ti.',
+      tag: 'client-on-the-way',
+    },
+    on_the_way: {
+      title: 'Pedido en camino 🛵',
+      body: 'Tu repartidor va hacia tu dirección.',
+      tag: 'client-on-the-way',
+    },
+    arrived: {
+      title: '¡Tu repartidor llegó! 🛵',
+      body: 'Está en tu puerta esperando — abre la app para confirmar',
+      tag: 'arrived',
+    },
+    delivered: {
+      title: 'Pedido entregado 🎉',
+      body: 'Tu pedido fue entregado. ¡Buen provecho!',
+      tag: 'client-delivered',
+    },
+  };
+
+  if (!clientId || !clientStatusMessages[status]) return;
+
+  const tokens = await getTokens('client', { userId: clientId });
+  const message = clientStatusMessages[status];
+  await sendTo(
+    tokens,
+    message.title,
+    message.body,
+    message.tag
+  );
 });
 
 // ─── Trigger 3: admin broadcast notifications ───────────────────────────────

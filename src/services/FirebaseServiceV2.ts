@@ -608,13 +608,22 @@ class FirebaseServiceV2 {
 
   async saveFCMToken(userId: string, token: string, role: string, businessId?: string) {
     try {
-      await setDoc(doc(db, COLLECTIONS.FCM_TOKENS, userId), {
+      const safeUserId = String(userId || '').trim();
+      const safeToken = String(token || '').trim();
+      if (!safeUserId || !safeToken) return;
+
+      const tokenKey = safeToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+      const documentId = `${safeUserId}_${tokenKey}`;
+      const now = new Date().toISOString();
+
+      await setDoc(doc(db, COLLECTIONS.FCM_TOKENS, documentId), {
         token,
         role,
-        userId,
+        userId: safeUserId,
         businessId: businessId || null,
-        updatedAt: new Date().toISOString(),
-      });
+        updatedAt: now,
+        createdAt: now,
+      }, { merge: true });
     } catch (err) {
       console.error('[FCM] Error saving token:', err);
     }

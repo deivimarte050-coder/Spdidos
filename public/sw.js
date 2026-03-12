@@ -2,6 +2,8 @@
 // Must be at root scope so Firebase Messaging can use it
 
 let messaging = null;
+const DEFAULT_ICON = '/logo_high_resolution.png';
+const DEFAULT_URL = '/';
 
 try {
   importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
@@ -22,18 +24,31 @@ try {
   messaging = null;
 }
 
+function showNotificationFromPayload(input = {}) {
+  const notif = input.notification || input;
+  const data = input.data || {};
+  const title = notif.title || data.title || 'Spdidos';
+  const body = notif.body || data.body || '';
+  const icon = notif.icon || data.icon || DEFAULT_ICON;
+  const tag = data.tag || notif.tag || 'spdidos-fcm';
+  const url = data.link || data.url || DEFAULT_URL;
+
+  return self.registration.showNotification(title, {
+    body,
+    icon,
+    badge: DEFAULT_ICON,
+    vibrate: [300, 100, 300, 100, 300],
+    requireInteraction: true,
+    silent: false,
+    tag,
+    data: { url },
+  });
+}
+
 // FCM background messages (received when browser is in background / phone locked)
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {
-    const notif = payload.notification || {};
-    self.registration.showNotification(notif.title || 'Spdidos', {
-      body:    notif.body  || '',
-      icon:    notif.icon  || '/logo_high_resolution.png',
-      badge:                  '/logo_high_resolution.png',
-      vibrate: [300, 100, 300, 100, 300],
-      requireInteraction: true,
-      tag: payload.data?.tag || 'spdidos-fcm',
-    });
+    showNotificationFromPayload(payload);
   });
 }
 
@@ -95,33 +110,14 @@ self.addEventListener('fetch', (event) => {
 // Receive notification requests from the main thread
 self.addEventListener('message', (event) => {
   if (!event.data || event.data.type !== 'SHOW_NOTIFICATION') return;
-  const { title, body, tag, icon } = event.data;
+  const { title, body, tag, icon, url } = event.data;
   event.waitUntil(
-    self.registration.showNotification(title, {
+    showNotificationFromPayload({
+      title,
       body,
-      tag:  tag  || 'spdidos',
-      icon: icon || '/logo_high_resolution.png',
-      badge:       '/logo_high_resolution.png',
-      vibrate: [300, 100, 300, 100, 300],
-      requireInteraction: true,
-      silent: false,
-    })
-  );
-});
-
-// Handle incoming FCM push messages (future support)
-self.addEventListener('push', (event) => {
-  if (!event.data) return;
-  let data = {};
-  try { data = event.data.json(); } catch { data = { title: 'Spdidos', body: event.data.text() }; }
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Spdidos', {
-      body:    data.body    || '',
-      icon:    data.icon    || '/logo_high_resolution.png',
-      badge:                  '/logo_high_resolution.png',
-      tag:     data.tag     || 'spdidos-push',
-      vibrate: [300, 100, 300, 100, 300],
-      requireInteraction: true,
+      tag,
+      icon,
+      data: { url },
     })
   );
 });
@@ -129,11 +125,16 @@ self.addEventListener('push', (event) => {
 // Clicking the notification opens / focuses the app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetUrl = event.notification?.data?.url || self.location.origin || DEFAULT_URL;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
       const existing = clients.find(c => c.url.includes(self.location.origin) && 'focus' in c);
-      if (existing) return existing.focus();
-      return self.clients.openWindow(self.location.origin);
+      if (existing) {
+        existing.focus();
+        if ('navigate' in existing) return existing.navigate(targetUrl);
+        return existing;
+      }
+      return self.clients.openWindow(targetUrl);
     })
   );
 });
