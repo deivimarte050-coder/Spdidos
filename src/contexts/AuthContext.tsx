@@ -2,11 +2,14 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import HybridDataServiceV2 from '../services/HybridDataServiceV2';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
+import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { auth } from '../firebase/config';
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   register: (userData: Omit<User, 'id'>) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<User>) => Promise<void>;
   isLoading: boolean;
@@ -15,6 +18,8 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const googleProvider = new GoogleAuthProvider();
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -104,6 +109,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
     
     try {
+      const normalizedEmail = String(userData.email || '').trim().toLowerCase();
+      if (!EMAIL_REGEX.test(normalizedEmail)) {
+        throw new Error('Correo electrónico inválido');
+      }
+
       // Verificar si el email ya existe con timeout
       console.log('🔍 Verificando si el email existe...');
       
@@ -114,14 +124,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const usersPromise = HybridDataServiceV2.getUsers();
       const users = await Promise.race([usersPromise, timeoutPromise]) as any[];
       
-      if (users.some(u => u.email === userData.email)) {
+      if (users.some(u => String(u.email || '').trim().toLowerCase() === normalizedEmail)) {
         console.log('❌ Email ya registrado');
-        throw new Error('El correo ya está registrado');
+        throw new Error('Este correo ya está registrado, intenta iniciar sesión.');
       }
 
       console.log('➕ Agregando nuevo usuario...');
-      
-      const addUserPromise = HybridDataServiceV2.addUser(userData);
+
+      const addUserPromise = HybridDataServiceV2.addUser({
+        ...userData,
+        email: normalizedEmail,
+      });
       const newUser = await Promise.race([addUserPromise, timeoutPromise]);
 
       console.log('✅ Usuario registrado:', (newUser as any).email);
@@ -138,10 +151,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const googleEmail = String(result.user.email || '').trim().toLowerCase();
+      if (!googleEmail) {
+        throw new Error('No se pudo obtener el correo de Google.');
+      }
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Tiempo de espera agotado')), 5000);
+      });
+
+      const usersPromise = HybridDataServiceV2.getUsers();
+      const users = await Promise.race([usersPromise, timeoutPromise]) as any[];
+      const existingUser = users.find((u) => String(u.email || '').trim().toLowerCase() === googleEmail);
+
+      if (existingUser) {
+        const { password: _, ...userWithoutPassword } = existingUser;
+        setUser(userWithoutPassword as User);
+        localStorage.setItem('delivery_user_session', JSON.stringify(userWithoutPassword));
+        return;
+      }
+
+      const newUserData = {
+        name: String(result.user.displayName || 'Cliente'),
+        email: googleEmail,
+        whatsapp: String(result.user.phoneNumber || ''),
+        phone: String(result.user.phoneNumber || ''),
+        role: 'client' as UserRole,
+        status: 'active' as const,
+        uid: result.user.uid,
+      };
+
+      const addUserPromise = HybridDataServiceV2.addUser(newUserData);
+      const newUser = await Promise.race([addUserPromise, timeoutPromise]) as any;
+      const { password: _, ...userWithoutPassword } = newUser;
+      setUser(userWithoutPassword as User);
+      localStorage.setItem('delivery_user_session', JSON.stringify(userWithoutPassword));
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setError('Se canceló el inicio de sesión con Google.');
+        throw new Error('Se canceló el inicio de sesión con Google.');
+      }
+      setError(err instanceof Error ? err.message : 'Error al iniciar con Google');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = () => {
     console.log('👋 Cerrando sesión...');
     setUser(null);
     localStorage.removeItem('delivery_user_session');
+    signOut(auth).catch(() => {});
   };
 
   const updateUser = async (data: Partial<User>) => {
@@ -162,6 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user, 
       login, 
       register, 
+      loginWithGoogle,
       logout,
       updateUser,
       isLoading,

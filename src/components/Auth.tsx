@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
 
 const Auth: React.FC = () => {
-  const { login, register } = useAuth();
+  const { login, register, loginWithGoogle } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,6 +37,18 @@ const Auth: React.FC = () => {
       }
     } catch (err: any) {
       setError(err.message || 'Ocurrió un error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await loginWithGoogle();
+    } catch (err: any) {
+      setError(err.message || 'No se pudo continuar con Google');
     } finally {
       setLoading(false);
     }
@@ -155,6 +167,30 @@ const Auth: React.FC = () => {
               )}
             </button>
           </form>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-gray-400 font-bold tracking-wider">o continúa con</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogleAuth}
+            disabled={loading}
+            className="w-full border border-gray-200 bg-white text-gray-700 py-3 rounded-2xl font-bold hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-3"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+              <path fill="#EA4335" d="M9 7.364v3.486h4.844c-.213 1.12-.853 2.07-1.813 2.706l2.93 2.273C16.67 14.24 17.636 11.9 17.636 9c0-.55-.05-1.08-.142-1.636H9z" />
+              <path fill="#34A853" d="M9 18c2.455 0 4.515-.813 6.02-2.17l-2.93-2.273c-.813.545-1.853.87-3.09.87-2.373 0-4.384-1.602-5.102-3.758H.87v2.361A9 9 0 0 0 9 18z" />
+              <path fill="#4A90E2" d="M3.898 10.669A5.41 5.41 0 0 1 3.613 9c0-.58.102-1.142.285-1.669V4.97H.87A9 9 0 0 0 0 9c0 1.453.348 2.83.87 4.03l3.028-2.361z" />
+              <path fill="#FBBC05" d="M9 3.573c1.335 0 2.535.46 3.477 1.364l2.608-2.608C13.511.89 11.45 0 9 0A9 9 0 0 0 .87 4.97l3.028 2.361C4.616 5.175 6.627 3.573 9 3.573z" />
+            </svg>
+            {loading ? 'Conectando...' : 'Continuar con Google'}
+          </button>
 
           <div className="text-center">
             <button 
