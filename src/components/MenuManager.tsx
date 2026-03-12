@@ -52,7 +52,7 @@ const MenuManager: React.FC = () => {
     drinkSizes: []
   });
 
-  const categories = ['Platos Típicos', 'Pizzas', 'Bebidas', 'Postres', 'Ensaladas', 'Sopas'];
+  const categories = ['Platos Típicos', 'Pizzas', 'Hamburguesas', 'Sándwich', 'Bebidas', 'Postres', 'Ensaladas', 'Sopas'];
   const isDrinkCategory = (category?: string) => (category || '').toLowerCase().includes('bebida');
   const sanitizeChoiceOptions = (choiceOptions?: Array<{ label: string; price: number }>) =>
     (choiceOptions || [])

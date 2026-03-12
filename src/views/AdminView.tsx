@@ -793,6 +793,8 @@ const AdminView: React.FC = () => {
                         >
                           <option value="">Seleccionar categoría</option>
                           <option value="Comida Rápida">Comida Rápida</option>
+                          <option value="Hamburguesas">Hamburguesas</option>
+                          <option value="Sándwich">Sándwich</option>
                           <option value="Pizzería">Pizzería</option>
                           <option value="Comida Dominicana">Comida Dominicana</option>
                           <option value="Postres">Postres</option>
@@ -1791,6 +1793,8 @@ const AdminView: React.FC = () => {
                       >
                         <option value="">Seleccionar categoría</option>
                         <option value="Comida Rápida">Comida Rápida</option>
+                        <option value="Hamburguesas">Hamburguesas</option>
+                        <option value="Sándwich">Sándwich</option>
                         <option value="Pizzería">Pizzería</option>
                         <option value="Comida Dominicana">Comida Dominicana</option>
                         <option value="Postres">Postres</option>

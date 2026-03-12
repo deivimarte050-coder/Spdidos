@@ -1588,7 +1588,10 @@ function AppContent() {
   const restaurantsVisible = activeBusinesses
     .filter((business) => {
       if (!normalizedRestaurantsSearchQuery) return true;
-      const searchable = normalizeSearchText(`${business.name || ''} ${business.category || ''} ${business.address || ''}`);
+      const menuSearchable = (business.menu || [])
+        .map((item) => `${item.name || ''} ${item.description || ''} ${item.category || ''}`)
+        .join(' ');
+      const searchable = normalizeSearchText(`${business.name || ''} ${business.category || ''} ${business.address || ''} ${menuSearchable}`);
       return searchable.includes(normalizedRestaurantsSearchQuery);
     })
     .filter((business) => {
@@ -2050,10 +2053,15 @@ function AppContent() {
               {[
                 { label: 'Saludable', icon: '🥗' },
                 { label: 'Comida dominicana', icon: '🇩🇴' },
+                { label: 'Hamburguesas', icon: '🍔' },
                 { label: 'Sándwiches', icon: '🥪' },
                 { label: 'Pollo', icon: '🐔' },
               ].map((category) => (
-                <button key={category.label} className="flex-shrink-0 bg-white rounded-2xl p-2.5 w-[88px] border border-gray-100 text-center">
+                <button
+                  key={category.label}
+                  onClick={() => setRestaurantsSearchQuery(category.label)}
+                  className="flex-shrink-0 bg-white rounded-2xl p-2.5 w-[88px] border border-gray-100 text-center"
+                >
                   <div className="w-14 h-14 rounded-xl bg-gray-100 mx-auto mb-2 flex items-center justify-center text-3xl">
                     <span role="img" aria-label={category.label}>{category.icon}</span>
                   </div>
