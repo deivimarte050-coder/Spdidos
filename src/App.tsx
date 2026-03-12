@@ -14,7 +14,7 @@ import AdminView from './views/AdminView';
 import { CartItem, View, Order, BusinessDayKey, MenuItem, AppNotification } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
-import FirebaseServiceV2, { HomeAnnouncement } from './services/FirebaseServiceV2';
+import FirebaseServiceV2, { HomeAnnouncement, PopupAnnouncement } from './services/FirebaseServiceV2';
 import EventService from './services/EventService';
 import { soundService } from './services/SoundService';
 import { initFCMToken, listenFCMForeground } from './services/FCMService';
@@ -882,6 +882,8 @@ function AppContent() {
   const [arrivedOrderId, setArrivedOrderId] = useState<string | null>(null);
   const [userNotifications, setUserNotifications] = useState<AppNotification[]>([]);
   const [homeAnnouncement, setHomeAnnouncement] = useState<HomeAnnouncement | null>(null);
+  const [popupAnnouncement, setPopupAnnouncement] = useState<PopupAnnouncement | null>(null);
+  const [showPopupAnnouncementModal, setShowPopupAnnouncementModal] = useState(false);
   const [pendingSharedTarget, setPendingSharedTarget] = useState<{ businessId: string; itemId?: string; imageUrl?: string } | null>(null);
   const [forceAuthForSharedOrder, setForceAuthForSharedOrder] = useState(false);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -1006,6 +1008,35 @@ function AppContent() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user?.id || user.role !== 'client') {
+      setPopupAnnouncement(null);
+      setShowPopupAnnouncementModal(false);
+      return;
+    }
+
+    let isCancelled = false;
+    const unsubscribe = FirebaseServiceV2.subscribeToPopupAnnouncement(async (announcement) => {
+      if (isCancelled) return;
+
+      if (!announcement) {
+        setPopupAnnouncement(null);
+        setShowPopupAnnouncementModal(false);
+        return;
+      }
+
+      setPopupAnnouncement(announcement);
+      const alreadyAcknowledged = await FirebaseServiceV2.hasAcknowledgedPopupAnnouncement(user.id, announcement.id);
+      if (isCancelled) return;
+      setShowPopupAnnouncementModal(!alreadyAcknowledged);
+    });
+
+    return () => {
+      isCancelled = true;
+      unsubscribe();
+    };
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     const readPending = () => {
@@ -1591,6 +1622,21 @@ function AppContent() {
     }
   };
 
+  const handleAcceptPopupAnnouncement = async () => {
+    if (!user?.id || !popupAnnouncement?.id) {
+      setShowPopupAnnouncementModal(false);
+      return;
+    }
+
+    try {
+      await FirebaseServiceV2.acknowledgePopupAnnouncement(user.id, popupAnnouncement.id);
+    } catch (error) {
+      console.error('Error confirmando anuncio emergente:', error);
+    } finally {
+      setShowPopupAnnouncementModal(false);
+    }
+  };
+
   const handleHomeCategorySelect = (categoryId: string) => {
     if (categoryId === 'restaurants') {
       setRestaurantsSearchQuery('');
@@ -1787,6 +1833,11 @@ function AppContent() {
 
   const handleCheckout = async () => {
     if (!selectedBusiness || !user) return;
+    const selectedBusinessOpenInfo = getBusinessOpenInfo(selectedBusiness);
+    if (!selectedBusinessOpenInfo.isOpen) {
+      alert(`El negocio está cerrado y no se pueden hacer pedidos en este momento. ${selectedBusinessOpenInfo.detail}`);
+      return;
+    }
 
     if (paymentMethod === 'transfer') {
       if (!selectedBusinessHasTransferAccount) {
@@ -1919,6 +1970,30 @@ function AppContent() {
   return (
     <>
       <AnimatePresence>
+        {showPopupAnnouncementModal && popupAnnouncement && user?.role === 'client' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 16 }}
+              className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"
+            >
+              <h3 className="text-2xl font-black text-gray-900">{popupAnnouncement.title}</h3>
+              <p className="mt-3 text-gray-600 whitespace-pre-line">{popupAnnouncement.message}</p>
+              <button
+                onClick={handleAcceptPopupAnnouncement}
+                className="mt-6 w-full py-3 rounded-xl bg-primary text-white font-black hover:bg-primary/90 transition-colors"
+              >
+                Aceptar
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
         {arrivedOrderId && (
           <ArrivalNotificationModal onConfirm={handleConfirmArrival} />
         )}

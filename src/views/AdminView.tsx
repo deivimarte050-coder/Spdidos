@@ -89,6 +89,16 @@ const AdminView: React.FC = () => {
     target: 'both',
   });
   const [sendingNotification, setSendingNotification] = useState(false);
+  const [popupAnnouncementForm, setPopupAnnouncementForm] = useState({
+    title: '',
+    message: '',
+  });
+  const [publishingPopupAnnouncement, setPublishingPopupAnnouncement] = useState(false);
+  const [lastPublishedPopupAnnouncement, setLastPublishedPopupAnnouncement] = useState<{
+    title: string;
+    message: string;
+    publishedAt: string;
+  } | null>(null);
 
   const [newBusiness, setNewBusiness] = useState({
     name: '',
@@ -161,6 +171,22 @@ const AdminView: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const unsubPopupAnnouncement = FirebaseServiceV2.subscribeToPopupAnnouncement((announcement) => {
+      if (!announcement) {
+        setLastPublishedPopupAnnouncement(null);
+        return;
+      }
+      setLastPublishedPopupAnnouncement({
+        title: announcement.title,
+        message: announcement.message,
+        publishedAt: announcement.publishedAt,
+      });
+    });
+
+    return () => unsubPopupAnnouncement();
+  }, []);
+
+  useEffect(() => {
     setDeliveryFeeDrafts((prev) => {
       const next = { ...prev };
       businesses.forEach((business) => {
@@ -222,6 +248,32 @@ const AdminView: React.FC = () => {
       alert(`❌ Error enviando notificación: ${error?.message || 'Error desconocido'}`);
     } finally {
       setSendingNotification(false);
+    }
+  };
+
+  const handlePublishPopupAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const title = popupAnnouncementForm.title.trim();
+    const message = popupAnnouncementForm.message.trim();
+
+    if (!title || !message) {
+      alert('Completa el título y el mensaje del anuncio emergente.');
+      return;
+    }
+
+    setPublishingPopupAnnouncement(true);
+    try {
+      await FirebaseServiceV2.publishPopupAnnouncement({
+        title,
+        message,
+        createdBy: user?.id,
+      });
+      alert('✅ Anuncio emergente publicado.');
+      setPopupAnnouncementForm({ title: '', message: '' });
+    } catch (error: any) {
+      alert(`❌ Error publicando anuncio emergente: ${error?.message || 'Error desconocido'}`);
+    } finally {
+      setPublishingPopupAnnouncement(false);
     }
   };
 
@@ -1404,7 +1456,7 @@ const AdminView: React.FC = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="max-w-3xl"
+              className="max-w-5xl space-y-6"
             >
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="text-xl font-black text-gray-900 mb-1">Enviar notificaciones</h3>
@@ -1461,6 +1513,56 @@ const AdminView: React.FC = () => {
                     <Bell className="w-4 h-4" /> {sendingNotification ? 'Enviando...' : 'Enviar notificación'}
                   </button>
                 </form>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="text-xl font-black text-gray-900 mb-1">Anuncio emergente para clientes</h3>
+                <p className="text-sm text-gray-400 mb-6">
+                  Este anuncio aparece automáticamente como popup cuando el cliente abre la app.
+                </p>
+
+                <form onSubmit={handlePublishPopupAnnouncement} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Título</label>
+                    <input
+                      type="text"
+                      value={popupAnnouncementForm.title}
+                      onChange={(e) => setPopupAnnouncementForm((prev) => ({ ...prev, title: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="Ej: Aviso importante"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Mensaje</label>
+                    <textarea
+                      value={popupAnnouncementForm.message}
+                      onChange={(e) => setPopupAnnouncementForm((prev) => ({ ...prev, message: e.target.value }))}
+                      rows={4}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                      placeholder="Escribe el mensaje que verá el cliente al abrir la app"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={publishingPopupAnnouncement}
+                    className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary/90 disabled:opacity-70 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Megaphone className="w-4 h-4" /> {publishingPopupAnnouncement ? 'Publicando...' : 'Publicar anuncio emergente'}
+                  </button>
+                </form>
+
+                {lastPublishedPopupAnnouncement && (
+                  <div className="mt-5 p-4 rounded-xl bg-gray-50 border border-gray-100">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Último anuncio publicado</p>
+                    <p className="mt-2 font-black text-gray-900">{lastPublishedPopupAnnouncement.title}</p>
+                    <p className="text-sm text-gray-600 mt-1 whitespace-pre-line">{lastPublishedPopupAnnouncement.message}</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Publicado: {new Date(lastPublishedPopupAnnouncement.publishedAt).toLocaleString()}
+                    </p>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

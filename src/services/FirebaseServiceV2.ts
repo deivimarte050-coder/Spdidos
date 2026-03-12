@@ -27,6 +27,15 @@ export interface HomeAnnouncement {
   updatedAt?: string;
 }
 
+export interface PopupAnnouncement {
+  id: string;
+  title: string;
+  message: string;
+  publishedAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+}
+
 // Colecciones de Firestore
 const COLLECTIONS = {
   USERS: 'users',
@@ -39,7 +48,8 @@ const COLLECTIONS = {
   DELIVERY_LOCATIONS: 'delivery_locations',
   CLIENT_LOCATIONS: 'client_locations',
   FCM_TOKENS: 'fcm_tokens',
-  SETTINGS: 'settings'
+  SETTINGS: 'settings',
+  USER_ANNOUNCEMENT_ACKS: 'user_announcement_acks',
 };
 
 const DEFAULT_HOME_ANNOUNCEMENT: HomeAnnouncement = {
@@ -497,6 +507,103 @@ class FirebaseServiceV2 {
     }, () => {
       callback(DEFAULT_HOME_ANNOUNCEMENT);
     });
+  }
+
+  async publishPopupAnnouncement(data: {
+    title: string;
+    message: string;
+    createdBy?: string;
+  }): Promise<void> {
+    try {
+      const title = String(data.title || '').trim();
+      const message = String(data.message || '').trim();
+      if (!title || !message) {
+        throw new Error('El título y el mensaje son obligatorios.');
+      }
+
+      const nowIso = new Date().toISOString();
+      await setDoc(doc(db, COLLECTIONS.SETTINGS, 'popup_announcement'), {
+        id: String(Date.now()),
+        title,
+        message,
+        createdBy: data.createdBy || null,
+        publishedAt: nowIso,
+        updatedAt: nowIso,
+      }, { merge: true });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error publicando anuncio emergente:', error);
+      throw error;
+    }
+  }
+
+  subscribeToPopupAnnouncement(callback: (announcement: PopupAnnouncement | null) => void): () => void {
+    const popupRef = doc(db, COLLECTIONS.SETTINGS, 'popup_announcement');
+    return onSnapshot(popupRef, (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
+      const data = snap.data() as any;
+      const publishedAt = data.publishedAt instanceof Timestamp
+        ? data.publishedAt.toDate().toISOString()
+        : String(data.publishedAt || new Date().toISOString());
+      const updatedAt = data.updatedAt instanceof Timestamp
+        ? data.updatedAt.toDate().toISOString()
+        : (data.updatedAt ? String(data.updatedAt) : undefined);
+
+      const popupAnnouncement: PopupAnnouncement = {
+        id: String(data.id || ''),
+        title: String(data.title || ''),
+        message: String(data.message || ''),
+        createdBy: data.createdBy ? String(data.createdBy) : undefined,
+        publishedAt,
+        updatedAt,
+      };
+
+      if (!popupAnnouncement.id || !popupAnnouncement.title || !popupAnnouncement.message) {
+        callback(null);
+        return;
+      }
+
+      callback(popupAnnouncement);
+    }, (error) => {
+      console.error('❌ [FirebaseV2] Error suscribiendo anuncio emergente:', error);
+      callback(null);
+    });
+  }
+
+  async acknowledgePopupAnnouncement(userId: string, announcementId: string): Promise<void> {
+    try {
+      const safeUserId = String(userId || '').trim();
+      const safeAnnouncementId = String(announcementId || '').trim();
+      if (!safeUserId || !safeAnnouncementId) return;
+
+      const nowIso = new Date().toISOString();
+      await setDoc(doc(db, COLLECTIONS.USER_ANNOUNCEMENT_ACKS, `${safeUserId}_${safeAnnouncementId}`), {
+        userId: safeUserId,
+        announcementId: safeAnnouncementId,
+        acceptedAt: nowIso,
+        updatedAt: nowIso,
+      }, { merge: true });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error confirmando anuncio emergente:', error);
+      throw error;
+    }
+  }
+
+  async hasAcknowledgedPopupAnnouncement(userId: string, announcementId: string): Promise<boolean> {
+    try {
+      const safeUserId = String(userId || '').trim();
+      const safeAnnouncementId = String(announcementId || '').trim();
+      if (!safeUserId || !safeAnnouncementId) return false;
+
+      const ackRef = doc(db, COLLECTIONS.USER_ANNOUNCEMENT_ACKS, `${safeUserId}_${safeAnnouncementId}`);
+      const ackSnap = await getDoc(ackRef);
+      return ackSnap.exists();
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error validando confirmación de anuncio emergente:', error);
+      return false;
+    }
   }
 
   async saveFCMToken(userId: string, token: string, role: string, businessId?: string) {
