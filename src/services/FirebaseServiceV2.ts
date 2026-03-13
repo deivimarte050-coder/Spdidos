@@ -18,7 +18,7 @@ import {
 import { getDownloadURL, ref, uploadString } from 'firebase/storage';
 import { db, storage } from '../firebase/config';
 import { User, Order, AppNotification } from '../types';
-import { notifyNewOrder, notifyStatusUpdate } from './NotifyService';
+// Notifications are now handled by Firebase Cloud Functions (Firestore triggers)
 
 export interface HomeAnnouncement {
   topText: string;
@@ -215,16 +215,6 @@ class FirebaseServiceV2 {
         source: 'app_v2'
       });
       console.log('✅ [FirebaseV2] Pedido agregado con ID:', docRef.id);
-
-      // Send push notifications to business, delivery, and client simultaneously
-      notifyNewOrder({
-        clientId: orderData.clientId,
-        clientName: orderData.clientName,
-        businessId: orderData.businessId,
-        businessName: orderData.businessName,
-        total: orderData.total,
-      });
-
       return { id: docRef.id, ...orderData };
     } catch (error: any) {
       console.error('❌ [FirebaseV2] Error agregando pedido:', error);
@@ -249,18 +239,6 @@ class FirebaseServiceV2 {
     try {
       const orderRef = doc(db, COLLECTIONS.ORDERS, id);
       await updateDoc(orderRef, { ...data, updatedAt: Timestamp.now() });
-
-      // Send push notification for status changes
-      if (data.status) {
-        const snap = await getDoc(orderRef);
-        const full = snap.exists() ? (snap.data() as any) : {};
-        notifyStatusUpdate({
-          status: data.status,
-          clientId: data.clientId || full.clientId || '',
-          businessId: data.businessId || full.businessId || '',
-          businessName: data.businessName || full.businessName || '',
-        });
-      }
     } catch (error: any) {
       console.error('❌ [FirebaseV2] Error actualizando pedido:', error);
       throw error;

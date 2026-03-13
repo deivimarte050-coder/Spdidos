@@ -200,11 +200,18 @@ exports.onNewOrder = (0, firestore_1.onDocumentCreated)('orders/{orderId}', asyn
     if (!order || order['status'] !== 'pending')
         return;
     const clientId = String(order['clientId'] || '');
-    const [businessTokens, deliveryTokens, clientTokens] = await Promise.all([
+    const [rawBusiness, rawDelivery, rawClient] = await Promise.all([
         getTokens('business', { businessId: order['businessId'] }),
         getTokens('delivery'),
         clientId ? getTokens('client', { userId: clientId }) : Promise.resolve([]),
     ]);
+    // Deduplicate: each token only receives ONE notification (priority: client > business > delivery)
+    const usedTokens = new Set();
+    const clientTokens = rawClient.filter(t => { usedTokens.add(t); return true; });
+    const businessTokens = rawBusiness.filter(t => { if (usedTokens.has(t))
+        return false; usedTokens.add(t); return true; });
+    const deliveryTokens = rawDelivery.filter(t => { if (usedTokens.has(t))
+        return false; usedTokens.add(t); return true; });
     await Promise.all([
         sendTo(businessTokens, '¡Nuevo Pedido! 🔔', `${order['clientName']} — RD$ ${Number(order['total'] ?? 0).toFixed(0)}`, 'new-order'),
         sendTo(deliveryTokens, '¡Nuevo Pedido Disponible! 🛵', `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`, 'new-order-delivery'),
