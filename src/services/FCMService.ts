@@ -17,8 +17,9 @@ export async function initFCMToken(): Promise<string | null> {
 
   // Always register the SW — required for showPushNotification to work
   // (background / minimized notifications don't need VAPID key)
-  const swReg = await navigator.serviceWorker.register('/sw.js').catch(() => null);
+  const swReg = await navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => null);
   if (!swReg) return null;
+  await swReg.update().catch(() => {});
 
   // Wait for the SW to be active
   await navigator.serviceWorker.ready.catch(() => null);
@@ -30,17 +31,26 @@ export async function initFCMToken(): Promise<string | null> {
 
   if (!('Notification' in window) || Notification.permission !== 'granted') return null;
 
-  try {
-    // vapidKey is optional — Firebase uses its default key when omitted
-    const tokenOptions: Parameters<typeof getToken>[1] = {
-      serviceWorkerRegistration: swReg,
-    };
-    if (VAPID_KEY) tokenOptions.vapidKey = VAPID_KEY;
+  const baseOptions: Parameters<typeof getToken>[1] = {
+    serviceWorkerRegistration: swReg,
+  };
 
-    const token = await getToken(getMsg(), tokenOptions);
+  if (VAPID_KEY) {
+    try {
+      const token = await getToken(getMsg(), { ...baseOptions, vapidKey: VAPID_KEY });
+      return token || null;
+    } catch (err) {
+      console.error('[FCM] Error getting token with VAPID key:', err);
+    }
+  } else {
+    console.warn('[FCM] VITE_VAPID_KEY no está configurada. Revisa variables de entorno en Vercel/local.');
+  }
+
+  try {
+    const token = await getToken(getMsg(), baseOptions);
     return token || null;
   } catch (err) {
-    console.error('[FCM] Error getting token:', err);
+    console.error('[FCM] Error getting token (fallback):', err);
     return null;
   }
 }
