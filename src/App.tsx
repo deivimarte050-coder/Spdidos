@@ -2182,31 +2182,6 @@ function AppContent() {
               ))}
             </div>
 
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <button className="px-3 py-2 rounded-full bg-white border border-gray-200 text-sm font-semibold">Filtrar</button>
-              <button className="px-3 py-2 rounded-full bg-white border border-gray-200 text-sm font-semibold">Ordenar</button>
-              <button
-                onClick={() => setRestaurantsQuickFilter((prev) => (prev === 'discounts' ? 'all' : 'discounts'))}
-                className={`px-3 py-2 rounded-full text-sm font-semibold border ${
-                  restaurantsQuickFilter === 'discounts' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200'
-                }`}
-              >
-                Descuentos
-              </button>
-              <button
-                onClick={() => setRestaurantsQuickFilter((prev) => (prev === 'featured' ? 'all' : 'featured'))}
-                className={`px-3 py-2 rounded-full text-sm font-semibold border ${
-                  restaurantsQuickFilter === 'featured' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200'
-                }`}
-              >
-                Destacados
-              </button>
-            </div>
-
-            <div className="bg-yellow-300 text-gray-900 px-4 py-3 rounded-2xl text-sm font-bold">
-              ¡Tu primer envío es gratis! Pide lo que quieras.
-            </div>
-
             <div className="flex items-center justify-between">
               <h2 className="text-3xl font-black text-gray-900">{restaurantsVisible.length} restaurantes</h2>
               <div className="flex items-center gap-2">
