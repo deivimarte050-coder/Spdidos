@@ -43,6 +43,8 @@ async function sendTo(tokens: string[], title: string, body: string, tag: string
         TTL: '2419200',
       },
       notification: {
+        title,
+        body,
         icon:              '/logo_high_resolution.png',
         badge:             '/logo_high_resolution.png',
         requireInteraction: true,

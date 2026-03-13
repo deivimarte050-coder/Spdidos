@@ -1000,22 +1000,59 @@ function AppContent() {
   // ── FCM: register SW, request permission, get token, start foreground listener
   useEffect(() => {
     if (!user?.id) return;
-    initFCMToken().then(token => {
-      if (!token) return;
-      FirebaseServiceV2.saveFCMToken(
+    let isMounted = true;
+    let resolvedBusinessId = (user as any).businessId as string | undefined;
+
+    const resolveBusinessId = async () => {
+      if (resolvedBusinessId || user.role !== 'business' || !user.email) {
+        return resolvedBusinessId;
+      }
+      try {
+        const businesses = await FirebaseServiceV2.getBusinesses();
+        const byEmail = businesses.find((business: any) => String(business?.email || '').toLowerCase() === String(user.email || '').toLowerCase());
+        if (byEmail?.id) resolvedBusinessId = byEmail.id;
+      } catch (error) {
+        console.warn('[FCM] No se pudo resolver businessId para token:', error);
+      }
+      return resolvedBusinessId;
+    };
+
+    const syncFCMToken = async () => {
+      const token = await initFCMToken();
+      if (!isMounted || !token) return;
+      const businessId = await resolveBusinessId();
+      await FirebaseServiceV2.saveFCMToken(
         user.id,
         token,
         user.role,
-        (user as any).businessId ?? undefined
+        businessId ?? undefined
       );
+    };
+
+    syncFCMToken();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncFCMToken();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const tokenRefreshInterval = window.setInterval(() => {
+      syncFCMToken();
+    }, 1000 * 60 * 30);
+
+    const unsubForeground = listenFCMForeground(({ title, body, tag }) => {
+      showPushNotification(title, body, tag);
     });
-    const unsubForeground = listenFCMForeground(() => {
-      // Las notificaciones del panel admin se sincronizan por Firestore en tiempo real
-    });
+
     return () => {
+      isMounted = false;
+      window.clearInterval(tokenRefreshInterval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubForeground?.();
     };
-  }, [user?.id, user?.role]);
+  }, [user?.id, user?.role, user?.email, (user as any)?.businessId]);
 
   useEffect(() => {
     if (!user?.id || user.role !== 'client') {

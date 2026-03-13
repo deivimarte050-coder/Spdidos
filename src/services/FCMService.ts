@@ -51,24 +51,11 @@ export function listenFCMForeground(
 ) {
   try {
     return onMessage(getMsg(), (payload) => {
-      const notif = payload.notification;
-      if (!notif) return;
-      const title = notif.title || 'Spdidos';
-      const body = notif.body || '';
+      const notif = payload.notification || {};
+      const title = notif.title || (payload.data?.title as string) || 'Spdidos';
+      const body = notif.body || (payload.data?.body as string) || '';
       const tag = (payload.data?.tag as string) || 'spdidos-fg';
-
       onForegroundNotification?.({ title, body, tag });
-
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(reg => {
-          reg.active?.postMessage({
-            type: 'SHOW_NOTIFICATION',
-            title,
-            body,
-            tag,
-          });
-        });
-      }
     });
   } catch {
     // messaging not available in this context

@@ -52,6 +52,19 @@ if (messaging) {
   });
 }
 
+if (!messaging) {
+  self.addEventListener('push', (event) => {
+    if (!event.data) return;
+    let payload = {};
+    try {
+      payload = event.data.json();
+    } catch {
+      payload = { body: event.data.text() };
+    }
+    event.waitUntil(showNotificationFromPayload(payload));
+  });
+}
+
 const CACHE = 'spdidos-v2';
 const PRECACHE_URLS = ['/', '/manifest.json', '/logo_high_resolution.png'];
 
