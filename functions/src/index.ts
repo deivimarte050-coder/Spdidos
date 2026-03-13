@@ -218,9 +218,11 @@ export const onNewOrder = onDocumentCreated('orders/{orderId}', async (event) =>
   const order = event.data?.data() as Record<string, any> | undefined;
   if (!order || order['status'] !== 'pending') return;
 
-  const [businessTokens, deliveryTokens] = await Promise.all([
+  const clientId = String(order['clientId'] || '');
+  const [businessTokens, deliveryTokens, clientTokens] = await Promise.all([
     getTokens('business', { businessId: order['businessId'] }),
     getTokens('delivery'),
+    clientId ? getTokens('client', { userId: clientId }) : Promise.resolve([]),
   ]);
 
   await sendTo(
@@ -235,6 +237,13 @@ export const onNewOrder = onDocumentCreated('orders/{orderId}', async (event) =>
     '¡Nuevo Pedido Disponible! 🛵',
     `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
     'new-order-delivery'
+  );
+
+  await sendTo(
+    clientTokens,
+    'Pedido recibido ✅',
+    `${String(order['businessName'] || 'El negocio')} recibió tu pedido.`,
+    'client-order-received'
   );
 });
 
