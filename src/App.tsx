@@ -1724,8 +1724,17 @@ function AppContent() {
     const params = new URLSearchParams({
       share: 'restaurant',
       business: business.id,
+      ...(business.image ? { img: business.image } : {}),
     });
-    return `${base}?${params.toString()}`;
+    const appUrl = `${base}?${params.toString()}`;
+    const previewBase = import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || 'https://us-central1-spdidos-8edda.cloudfunctions.net/sharePreview';
+    const previewParams = new URLSearchParams({
+      type: 'restaurant',
+      business: business.id,
+      url: appUrl,
+    });
+    if (business.image) previewParams.set('img', business.image);
+    return `${previewBase}?${previewParams.toString()}`;
   };
 
   const buildMenuItemShareLink = (business: Business, item: MenuItem) => {
@@ -1734,8 +1743,22 @@ function AppContent() {
       share: 'item',
       business: business.id,
       item: item.id,
+      ...(item.image ? { img: item.image } : business.image ? { img: business.image } : {}),
     });
-    return `${base}?${params.toString()}`;
+    const appUrl = `${base}?${params.toString()}`;
+    const previewBase = import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || 'https://us-central1-spdidos-8edda.cloudfunctions.net/sharePreview';
+    const previewParams = new URLSearchParams({
+      type: 'item',
+      business: business.id,
+      item: item.id,
+      url: appUrl,
+    });
+    if (item.image) {
+      previewParams.set('img', item.image);
+    } else if (business.image) {
+      previewParams.set('img', business.image);
+    }
+    return `${previewBase}?${previewParams.toString()}`;
   };
 
   const shareLink = async (options: { title: string; text: string; url: string }) => {

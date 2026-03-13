@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onRequest } from 'firebase-functions/v2/https';
 
 admin.initializeApp();
 
@@ -77,6 +78,109 @@ async function sendTo(tokens: string[], title: string, body: string, tag: string
   }
   await batch.commit();
 }
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const resolveValidUrl = (value: string, fallback: string) => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.toString();
+  } catch {
+    // ignore malformed URLs
+  }
+  return fallback;
+};
+
+// ─── Share preview (OG/Twitter cards) ────────────────────────────────────────
+export const sharePreview = onRequest(async (req, res) => {
+  const rawUrl = String(req.query.url || '').trim();
+  const safeFallbackUrl = 'https://spdidos.vercel.app/';
+  const targetUrl = resolveValidUrl(rawUrl, safeFallbackUrl);
+  const appOrigin = (() => {
+    try {
+      return new URL(targetUrl).origin;
+    } catch {
+      return safeFallbackUrl;
+    }
+  })();
+  const appImage = `${appOrigin}/logo_high_resolution.png`;
+
+  const type = String(req.query.type || 'app').toLowerCase();
+  const businessId = String(req.query.business || '').trim();
+  const itemId = String(req.query.item || '').trim();
+  const queryImage = String(req.query.img || '').trim();
+
+  let title = 'Spdidos - Delivery & Mandados';
+  let description = 'Pide comida y mandados en minutos con Spdidos.';
+  let image = queryImage || appImage;
+
+  if ((type === 'restaurant' || type === 'item') && businessId) {
+    try {
+      const businessSnap = await db.collection('businesses').doc(businessId).get();
+      const business = businessSnap.exists ? businessSnap.data() as Record<string, any> : null;
+
+      if (business) {
+        const businessName = String(business.name || 'Negocio');
+        const businessImage = String(business.image || '').trim();
+        if (!image && businessImage) image = businessImage;
+
+        if (type === 'restaurant') {
+          title = `${businessName} en Spdidos`;
+          description = `Mira el menú de ${businessName} y ordena en Spdidos.`;
+          image = queryImage || businessImage || appImage;
+        }
+
+        if (type === 'item') {
+          const menu = Array.isArray(business.menu) ? business.menu : [];
+          const item = menu.find((menuItem: any) => String(menuItem?.id || '') === itemId);
+          const itemName = String(item?.name || 'Artículo del menú');
+          const itemDescription = String(item?.description || '').trim();
+          const itemImage = String(item?.image || '').trim();
+          title = `${itemName} · ${businessName}`;
+          description = itemDescription || `Mira ${itemName} en el menú de ${businessName}.`;
+          image = queryImage || itemImage || businessImage || appImage;
+        }
+      }
+    } catch {
+      image = queryImage || appImage;
+    }
+  }
+
+  const safeTitle = escapeHtml(title);
+  const safeDescription = escapeHtml(description);
+  const safeImage = escapeHtml(resolveValidUrl(image, appImage));
+  const safeTargetUrl = escapeHtml(targetUrl);
+
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+  res.status(200).send(`<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle}</title>
+    <meta name="description" content="${safeDescription}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="${safeTitle}" />
+    <meta property="og:description" content="${safeDescription}" />
+    <meta property="og:image" content="${safeImage}" />
+    <meta property="og:url" content="${safeTargetUrl}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${safeTitle}" />
+    <meta name="twitter:description" content="${safeDescription}" />
+    <meta name="twitter:image" content="${safeImage}" />
+    <meta http-equiv="refresh" content="0;url=${safeTargetUrl}" />
+    <script>window.location.replace(${JSON.stringify(targetUrl)});</script>
+  </head>
+  <body></body>
+</html>`);
+});
 
 // ─── Trigger 1: new order → notify business ───────────────────────────────────
 export const onNewOrder = onDocumentCreated('orders/{orderId}', async (event) => {
