@@ -19,7 +19,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ALLOWED_EMAIL_DOMAINS = ['gmail.com', 'hotmail.com'];
 const googleProvider = new GoogleAuthProvider();
+const isAllowedRegistrationEmail = (email: string) => {
+  const domain = String(email || '').split('@')[1] || '';
+  return ALLOWED_EMAIL_DOMAINS.includes(domain);
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -113,6 +118,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!EMAIL_REGEX.test(normalizedEmail)) {
         throw new Error('Correo electrónico inválido');
       }
+      if (!isAllowedRegistrationEmail(normalizedEmail)) {
+        throw new Error('Solo se permiten correos @gmail.com y @hotmail.com para registrarse.');
+      }
 
       // Verificar si el email ya existe con timeout
       console.log('🔍 Verificando si el email existe...');
@@ -160,6 +168,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const googleEmail = String(result.user.email || '').trim().toLowerCase();
       if (!googleEmail) {
         throw new Error('No se pudo obtener el correo de Google.');
+      }
+      if (!isAllowedRegistrationEmail(googleEmail)) {
+        throw new Error('Solo se permiten correos @gmail.com y @hotmail.com para registrarse.');
       }
 
       const timeoutPromise = new Promise((_, reject) => {
