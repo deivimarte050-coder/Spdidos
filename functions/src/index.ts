@@ -213,17 +213,28 @@ export const sharePreview = onRequest(async (req, res) => {
 </html>`);
 });
 
-// ─── Trigger 1: new order → notify business ───────────────────────────────────
+// ─── Trigger 1: new order → notify business + delivery ───────────────────────
 export const onNewOrder = onDocumentCreated('orders/{orderId}', async (event) => {
   const order = event.data?.data() as Record<string, any> | undefined;
   if (!order || order['status'] !== 'pending') return;
 
-  const tokens = await getTokens('business', { businessId: order['businessId'] });
+  const [businessTokens, deliveryTokens] = await Promise.all([
+    getTokens('business', { businessId: order['businessId'] }),
+    getTokens('delivery'),
+  ]);
+
   await sendTo(
-    tokens,
+    businessTokens,
     '¡Nuevo Pedido! 🔔',
     `${order['clientName']} — RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
     'new-order'
+  );
+
+  await sendTo(
+    deliveryTokens,
+    '¡Nuevo Pedido Disponible! 🛵',
+    `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
+    'new-order-delivery'
   );
 });
 
