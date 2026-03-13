@@ -74,10 +74,12 @@ async function sendTo(tokens: string[], title: string, body: string, tag: string
   if (!invalidTokens.length) return;
 
   const batch = db.batch();
-  for (const token of invalidTokens) {
-    const tokenSnap = await db.collection('fcm_tokens').where('token', '==', token).get();
+  const tokenSnapshots = await Promise.all(
+    invalidTokens.map((token) => db.collection('fcm_tokens').where('token', '==', token).get())
+  );
+  tokenSnapshots.forEach((tokenSnap) => {
     tokenSnap.docs.forEach((d) => batch.delete(d.ref));
-  }
+  });
   await batch.commit();
 }
 
@@ -225,26 +227,26 @@ export const onNewOrder = onDocumentCreated('orders/{orderId}', async (event) =>
     clientId ? getTokens('client', { userId: clientId }) : Promise.resolve([]),
   ]);
 
-  await sendTo(
-    businessTokens,
-    '¡Nuevo Pedido! 🔔',
-    `${order['clientName']} — RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
-    'new-order'
-  );
-
-  await sendTo(
-    deliveryTokens,
-    '¡Nuevo Pedido Disponible! 🛵',
-    `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
-    'new-order-delivery'
-  );
-
-  await sendTo(
-    clientTokens,
-    'Pedido recibido ✅',
-    `${String(order['businessName'] || 'El negocio')} recibió tu pedido.`,
-    'client-order-received'
-  );
+  await Promise.all([
+    sendTo(
+      businessTokens,
+      '¡Nuevo Pedido! 🔔',
+      `${order['clientName']} — RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
+      'new-order'
+    ),
+    sendTo(
+      deliveryTokens,
+      '¡Nuevo Pedido Disponible! 🛵',
+      `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
+      'new-order-delivery'
+    ),
+    sendTo(
+      clientTokens,
+      'Pedido recibido ✅',
+      `${String(order['businessName'] || 'El negocio')} recibió tu pedido.`,
+      'client-order-received'
+    ),
+  ]);
 });
 
 // ─── Trigger 2: status changes → notify relevant users ───────────────────────
