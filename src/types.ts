@@ -187,4 +187,4 @@ export interface AppNotification {
   source?: 'admin' | 'system' | 'order';
 }
 
-export type View = 'home' | 'restaurants' | 'restaurant' | 'tracking' | 'orders' | 'notifications' | 'profile' | 'addresses' | 'favorites' | 'history' | 'settings' | 'business';
+export type View = 'home' | 'restaurants' | 'restaurant' | 'tracking' | 'orders' | 'notifications' | 'profile' | 'addresses' | 'favorites' | 'history' | 'settings' | 'business' | 'support';

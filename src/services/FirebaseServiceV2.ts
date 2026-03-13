@@ -51,6 +51,8 @@ const COLLECTIONS = {
   FCM_TOKENS: 'fcm_tokens',
   SETTINGS: 'settings',
   USER_ANNOUNCEMENT_ACKS: 'user_announcement_acks',
+  SUPPORT_CHATS: 'support_chats',
+  SUPPORT_MESSAGES: 'support_messages',
 };
 
 const DEFAULT_HOME_ANNOUNCEMENT: HomeAnnouncement = {
@@ -651,6 +653,28 @@ class FirebaseServiceV2 {
     }
   }
 
+  async createInAppNotification(data: {
+    userId: string;
+    title: string;
+    message: string;
+    source?: 'admin' | 'system' | 'order';
+  }): Promise<void> {
+    try {
+      const now = Timestamp.now();
+      await addDoc(collection(db, COLLECTIONS.USER_NOTIFICATIONS), {
+        userId: data.userId,
+        title: data.title,
+        message: data.message,
+        status: 'unread',
+        source: data.source || 'system',
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error creando notificación in-app:', error);
+    }
+  }
+
   async createInAppNotificationsForTarget(data: {
     title: string;
     body: string;
@@ -771,6 +795,132 @@ class FirebaseServiceV2 {
       await batch.commit();
     } catch (error) {
       console.error('❌ [FirebaseV2] Error marcando todas como leídas:', error);
+      throw error;
+    }
+  }
+
+  // ─── Support Chat ──────────────────────────────────────────────────────────
+
+  async getOrCreateSupportChat(userId: string, userName: string, userPhoto?: string): Promise<string> {
+    try {
+      const q = query(
+        collection(db, COLLECTIONS.SUPPORT_CHATS),
+        where('clientId', '==', userId),
+        where('status', '==', 'open')
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) return snapshot.docs[0].id;
+
+      const docRef = await addDoc(collection(db, COLLECTIONS.SUPPORT_CHATS), {
+        clientId: userId,
+        clientName: userName || 'Cliente',
+        clientPhoto: userPhoto || '',
+        status: 'open',
+        lastMessage: '',
+        lastMessageAt: Timestamp.now(),
+        lastMessageBy: 'client',
+        unreadAdmin: 0,
+        unreadClient: 0,
+        createdAt: Timestamp.now(),
+      });
+      return docRef.id;
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error getOrCreateSupportChat:', error);
+      throw error;
+    }
+  }
+
+  async sendSupportMessage(chatId: string, senderId: string, senderName: string, senderRole: 'client' | 'admin', text: string): Promise<void> {
+    try {
+      await addDoc(collection(db, COLLECTIONS.SUPPORT_MESSAGES), {
+        chatId,
+        senderId,
+        senderName,
+        senderRole,
+        text: text.trim(),
+        createdAt: Timestamp.now(),
+      });
+      const unreadField = senderRole === 'client' ? 'unreadAdmin' : 'unreadClient';
+      const chatRef = doc(db, COLLECTIONS.SUPPORT_CHATS, chatId);
+      const chatSnap = await getDoc(chatRef);
+      const currentUnread = chatSnap.exists() ? (chatSnap.data()?.[unreadField] || 0) : 0;
+      await updateDoc(chatRef, {
+        lastMessage: text.trim().slice(0, 100),
+        lastMessageAt: Timestamp.now(),
+        lastMessageBy: senderRole,
+        [unreadField]: currentUnread + 1,
+      });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error sendSupportMessage:', error);
+      throw error;
+    }
+  }
+
+  subscribeSupportChats(cb: (chats: any[]) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.SUPPORT_CHATS),
+      orderBy('lastMessageAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+      const chats = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(chats);
+    });
+  }
+
+  subscribeClientSupportChat(userId: string, cb: (chat: any | null) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.SUPPORT_CHATS),
+      where('clientId', '==', userId),
+      orderBy('lastMessageAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) { cb(null); return; }
+      const d = snapshot.docs[0];
+      cb({ id: d.id, ...d.data() });
+    });
+  }
+
+  subscribeSupportMessages(chatId: string, cb: (messages: any[]) => void): () => void {
+    const q = query(
+      collection(db, COLLECTIONS.SUPPORT_MESSAGES),
+      where('chatId', '==', chatId),
+      orderBy('createdAt', 'asc')
+    );
+    return onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(msgs);
+    });
+  }
+
+  async markSupportChatRead(chatId: string, role: 'client' | 'admin'): Promise<void> {
+    try {
+      const field = role === 'client' ? 'unreadClient' : 'unreadAdmin';
+      await updateDoc(doc(db, COLLECTIONS.SUPPORT_CHATS, chatId), { [field]: 0 });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error markSupportChatRead:', error);
+    }
+  }
+
+  async closeSupportChat(chatId: string): Promise<void> {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.SUPPORT_CHATS, chatId), {
+        status: 'closed',
+        closedAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error closeSupportChat:', error);
+      throw error;
+    }
+  }
+
+  async reopenSupportChat(chatId: string): Promise<void> {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.SUPPORT_CHATS, chatId), {
+        status: 'open',
+        closedAt: null,
+      });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error reopenSupportChat:', error);
       throw error;
     }
   }
