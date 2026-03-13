@@ -228,12 +228,16 @@ exports.onOrderUpdate = (0, firestore_1.onDocumentUpdated)('orders/{orderId}', a
         return;
     const status = String(after['status'] || '');
     const clientId = String(after['clientId'] || '');
-    // Pedido listo → avisar a todos los repartidores disponibles
-    if (after['status'] === 'ready') {
-        const tokens = await getTokens('delivery');
-        await sendTo(tokens, '¡Pedido disponible! 📦', 'Hay un nuevo pedido listo para recoger', 'ready-order');
+    // Get client tokens to exclude them from non-client notifications
+    const clientTokenSet = new Set(clientId ? await getTokens('client', { userId: clientId }) : []);
+    // Pedido listo → avisar SOLO a repartidores (excluir tokens del cliente)
+    if (status === 'ready') {
+        const allDelivery = await getTokens('delivery');
+        const deliveryOnly = allDelivery.filter(t => !clientTokenSet.has(t));
+        await sendTo(deliveryOnly, '¡Pedido disponible! 📦', 'Hay un nuevo pedido listo para recoger', 'ready-order');
         return;
     }
+    // Notifications that go ONLY to the client
     const clientStatusMessages = {
         accepted: {
             title: 'Pedido aceptado ✅',
@@ -268,9 +272,9 @@ exports.onOrderUpdate = (0, firestore_1.onDocumentUpdated)('orders/{orderId}', a
     };
     if (!clientId || !clientStatusMessages[status])
         return;
-    const tokens = await getTokens('client', { userId: clientId });
+    const clientTokens = Array.from(clientTokenSet);
     const message = clientStatusMessages[status];
-    await sendTo(tokens, message.title, message.body, message.tag);
+    await sendTo(clientTokens, message.title, message.body, message.tag);
 });
 // ─── Trigger 3: admin broadcast notifications ───────────────────────────────
 exports.onAdminNotificationCreated = (0, firestore_1.onDocumentCreated)('admin_notifications/{notificationId}', async (event) => {

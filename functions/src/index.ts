@@ -265,11 +265,17 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
   const status = String(after['status'] || '');
   const clientId = String(after['clientId'] || '');
 
-  // Pedido listo → avisar a todos los repartidores disponibles
-  if (after['status'] === 'ready') {
-    const tokens = await getTokens('delivery');
+  // Get client tokens to exclude them from non-client notifications
+  const clientTokenSet = new Set(
+    clientId ? await getTokens('client', { userId: clientId }) : []
+  );
+
+  // Pedido listo → avisar SOLO a repartidores (excluir tokens del cliente)
+  if (status === 'ready') {
+    const allDelivery = await getTokens('delivery');
+    const deliveryOnly = allDelivery.filter(t => !clientTokenSet.has(t));
     await sendTo(
-      tokens,
+      deliveryOnly,
       '¡Pedido disponible! 📦',
       'Hay un nuevo pedido listo para recoger',
       'ready-order'
@@ -277,6 +283,7 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
     return;
   }
 
+  // Notifications that go ONLY to the client
   const clientStatusMessages: Record<string, { title: string; body: string; tag: string }> = {
     accepted: {
       title: 'Pedido aceptado ✅',
@@ -312,10 +319,10 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
 
   if (!clientId || !clientStatusMessages[status]) return;
 
-  const tokens = await getTokens('client', { userId: clientId });
+  const clientTokens = Array.from(clientTokenSet);
   const message = clientStatusMessages[status];
   await sendTo(
-    tokens,
+    clientTokens,
     message.title,
     message.body,
     message.tag
