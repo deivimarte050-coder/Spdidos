@@ -109,10 +109,12 @@ export interface MenuItem {
   choiceOptions?: Array<{
     label: string;
     price: number;
+    available?: boolean;
   }>;
   drinkSizes?: Array<{
     size: string;
     price: number;
+    available?: boolean;
   }>;
 }
 

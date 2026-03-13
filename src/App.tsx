@@ -1573,18 +1573,18 @@ function AppContent() {
     return false;
   };
   const getMenuChoiceOptions = (item?: MenuItem | null) => {
-    if (!item) return [] as { label: string; price: number | null }[];
+    if (!item) return [] as { label: string; price: number | null; available?: boolean }[];
 
     if ((item.choiceOptions || []).length > 0) {
       return (item.choiceOptions || [])
         .filter((option) => option.label && Number.isFinite(option.price) && option.price > 0)
-        .map((option) => ({ label: option.label.trim(), price: option.price }));
+        .map((option) => ({ label: option.label.trim(), price: option.price, available: option.available }));
     }
 
     if ((item.drinkSizes || []).length > 0) {
       return (item.drinkSizes || [])
         .filter((size) => size.size && Number.isFinite(size.price) && size.price > 0)
-        .map((size) => ({ label: size.size.trim(), price: size.price }));
+        .map((size) => ({ label: size.size.trim(), price: size.price, available: size.available }));
     }
 
     if (!isDrinkItem(item)) {
@@ -2535,7 +2535,7 @@ function AppContent() {
                   (() => {
                     const isDrink = isDrinkItem(selectedMenuItem);
                     const choiceOptions = getMenuChoiceOptions(selectedMenuItem);
-                    const activeChoiceLabel = selectedDrinkSize || choiceOptions[0]?.label || null;
+                    const activeChoiceLabel = selectedDrinkSize || choiceOptions.find(o => o.available !== false)?.label || null;
                     const activeChoiceOption = choiceOptions.find((opt) => opt.label === activeChoiceLabel) || null;
                     const selectedPrice = activeChoiceOption?.price ?? selectedMenuItem.price;
                     const optionQuantitiesTotal = choiceOptions.reduce((acc, option) => acc + (modalOptionQuantities[option.label] || 0), 0);
@@ -2609,22 +2609,34 @@ function AppContent() {
                             <div className="mt-3 space-y-2">
                               {choiceOptions.map((option) => {
                                 const optionLabel = option.label;
-                                const isSelected = (selectedDrinkSize || choiceOptions[0]?.label) === optionLabel;
+                                const isOptionUnavailable = option.available === false;
+                                const isSelected = !isOptionUnavailable && (selectedDrinkSize || choiceOptions.find(o => o.available !== false)?.label) === optionLabel;
                                 const optionQty = modalOptionQuantities[optionLabel] || 0;
                                 return (
                                   <button
                                     key={optionLabel}
                                     type="button"
-                                    onClick={() => setSelectedDrinkSize(optionLabel)}
-                                    className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 ${isSelected ? 'border-primary bg-primary/5' : 'border-gray-200'}`}
+                                    disabled={isOptionUnavailable}
+                                    onClick={() => { if (!isOptionUnavailable) setSelectedDrinkSize(optionLabel); }}
+                                    className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 ${
+                                      isOptionUnavailable
+                                        ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
+                                        : isSelected ? 'border-primary bg-primary/5' : 'border-gray-200'
+                                    }`}
                                   >
-                                    <span className="font-semibold text-gray-800 uppercase">{optionLabel}</span>
+                                    <span className={`font-semibold uppercase ${isOptionUnavailable ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{optionLabel}</span>
                                     <div className="flex items-center gap-3">
-                                      <span className="text-sm font-bold text-gray-500">{option.price ? `RD$ ${option.price}` : ''}</span>
-                                      <span className={`text-xs font-black px-2 py-0.5 rounded-full ${optionQty > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
-                                        x{optionQty}
-                                      </span>
-                                      <div className={`w-5 h-5 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-gray-300'}`} />
+                                      {isOptionUnavailable ? (
+                                        <span className="text-xs font-black px-2 py-0.5 rounded-full bg-red-100 text-red-600">Agotado</span>
+                                      ) : (
+                                        <>
+                                          <span className="text-sm font-bold text-gray-500">{option.price ? `RD$ ${option.price}` : ''}</span>
+                                          <span className={`text-xs font-black px-2 py-0.5 rounded-full ${optionQty > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            x{optionQty}
+                                          </span>
+                                          <div className={`w-5 h-5 rounded-full border-2 ${isSelected ? 'border-primary bg-primary' : 'border-gray-300'}`} />
+                                        </>
+                                      )}
                                     </div>
                                   </button>
                                 );

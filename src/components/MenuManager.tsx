@@ -19,6 +19,7 @@ interface MenuItem {
   choiceOptions?: Array<{
     label: string;
     price: number;
+    available?: boolean;
   }>;
   drinkSizes?: Array<{
     size: string;
@@ -54,10 +55,10 @@ const MenuManager: React.FC = () => {
 
   const categories = ['Platos Típicos', 'Pizzas', 'Hamburguesas', 'Sándwich', 'Bebidas', 'Postres', 'Ensaladas', 'Sopas'];
   const isDrinkCategory = (category?: string) => (category || '').toLowerCase().includes('bebida');
-  const sanitizeChoiceOptions = (choiceOptions?: Array<{ label: string; price: number }>) =>
+  const sanitizeChoiceOptions = (choiceOptions?: Array<{ label: string; price: number; available?: boolean }>) =>
     (choiceOptions || [])
       .filter((option) => option.label.trim() && Number.isFinite(option.price) && option.price > 0)
-      .map((option) => ({ label: option.label.trim(), price: option.price }));
+      .map((option) => ({ label: option.label.trim(), price: option.price, available: option.available !== false }));
   // Cargar menú del negocio actual desde Firebase
   useEffect(() => {
     const loadMenu = async () => {
@@ -83,6 +84,7 @@ const MenuManager: React.FC = () => {
                 choiceOptions: (item.choiceOptions || item.drinkSizes || []).map((option: any) => ({
                   label: String(option?.label || option?.size || '').trim(),
                   price: Number(option?.price) || 0,
+                  available: option?.available !== false,
                 })),
                 drinkSizes: item.drinkSizes || []
               }));
@@ -134,10 +136,11 @@ const MenuManager: React.FC = () => {
         plain.available = !!(item.isAvailable !== false && item.isActive !== false);
         const choiceOptions = sanitizeChoiceOptions(item.choiceOptions);
         plain.optionGroupLabel = String(item.optionGroupLabel || (isDrinkCategory(item.category) ? 'Tamaño' : 'Sabor'));
-        plain.choiceOptions = choiceOptions;
+        plain.choiceOptions = choiceOptions.map((opt) => ({ label: opt.label, price: opt.price, available: opt.available }));
         plain.drinkSizes = choiceOptions.map((option) => ({
           size: option.label,
           price: option.price,
+          available: option.available,
         }));
         cleanMenu.push(plain);
       }
@@ -244,7 +247,7 @@ const MenuManager: React.FC = () => {
     setNewItem((prev) => ({ ...prev, choiceOptions: [...(prev.choiceOptions || []), { ...defaultChoiceOption }] }));
   };
 
-  const updateChoiceOptionOnNew = (index: number, patch: Partial<{ label: string; price: number }>) => {
+  const updateChoiceOptionOnNew = (index: number, patch: Partial<{ label: string; price: number; available: boolean }>) => {
     setNewItem((prev) => ({
       ...prev,
       choiceOptions: (prev.choiceOptions || []).map((option, idx) => (idx === index ? { ...option, ...patch } : option)),
@@ -260,7 +263,7 @@ const MenuManager: React.FC = () => {
     setEditingItem({ ...editingItem, choiceOptions: [...(editingItem.choiceOptions || []), { ...defaultChoiceOption }] });
   };
 
-  const updateChoiceOptionOnEdit = (index: number, patch: Partial<{ label: string; price: number }>) => {
+  const updateChoiceOptionOnEdit = (index: number, patch: Partial<{ label: string; price: number; available: boolean }>) => {
     if (!editingItem) return;
     setEditingItem({
       ...editingItem,
@@ -435,12 +438,12 @@ const MenuManager: React.FC = () => {
                   ))}
                 </div>
                 {(newItem.choiceOptions || []).map((option, idx) => (
-                  <div key={`new-size-${idx}`} className="grid grid-cols-[1fr_130px_auto] gap-2 items-center">
+                  <div key={`new-size-${idx}`} className="grid grid-cols-[1fr_100px_auto_auto] gap-2 items-center">
                     <input
                       type="text"
                       value={option.label}
                       onChange={(e) => updateChoiceOptionOnNew(idx, { label: e.target.value })}
-                      className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                      className={`p-2 border border-gray-200 rounded-lg text-sm bg-white ${option.available === false ? 'opacity-50 line-through' : ''}`}
                       placeholder="Ej: Pollo, Res, Grande"
                     />
                     <div className="relative">
@@ -454,6 +457,13 @@ const MenuManager: React.FC = () => {
                         placeholder="0"
                       />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => updateChoiceOptionOnNew(idx, { available: option.available === false ? true : false })}
+                      className={`px-2 py-2 rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap ${option.available !== false ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                    >
+                      {option.available !== false ? 'Disp.' : 'Agotado'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => removeChoiceOptionOnNew(idx)}
@@ -601,12 +611,12 @@ const MenuManager: React.FC = () => {
                         ))}
                       </div>
                       {(editingItem.choiceOptions || []).map((option, idx) => (
-                        <div key={`edit-size-${idx}`} className="grid grid-cols-[1fr_110px_auto] gap-2 items-center">
+                        <div key={`edit-size-${idx}`} className="grid grid-cols-[1fr_90px_auto_auto] gap-2 items-center">
                           <input
                             type="text"
                             value={option.label}
                             onChange={(e) => updateChoiceOptionOnEdit(idx, { label: e.target.value })}
-                            className="p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                            className={`p-2 border border-gray-200 rounded-lg text-sm bg-white ${option.available === false ? 'opacity-50 line-through' : ''}`}
                             placeholder="Ej: Cerdo"
                           />
                           <div className="relative">
@@ -620,6 +630,13 @@ const MenuManager: React.FC = () => {
                               placeholder="0"
                             />
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => updateChoiceOptionOnEdit(idx, { available: option.available === false ? true : false })}
+                            className={`px-2 py-2 rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap ${option.available !== false ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                          >
+                            {option.available !== false ? 'Disp.' : 'Agotado'}
+                          </button>
                           <button type="button" onClick={() => removeChoiceOptionOnEdit(idx)} className="px-2 py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100">
                             <Trash2 className="w-4 h-4" />
                           </button>
