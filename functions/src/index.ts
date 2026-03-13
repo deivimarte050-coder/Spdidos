@@ -104,6 +104,7 @@ export const sharePreview = onRequest(async (req, res) => {
   const shortType = String(req.query.t || '').toLowerCase();
   const shortBusinessId = String(req.query.b || '').trim();
   const shortItemId = String(req.query.m || '').trim();
+  const shortAppBase = String(req.query.u || '').trim();
 
   const inferredType = shortType === 'r'
     ? 'restaurant'
@@ -114,6 +115,7 @@ export const sharePreview = onRequest(async (req, res) => {
   const inferredBusinessId = shortBusinessId || String(req.query.business || '').trim();
   const inferredItemId = shortItemId || String(req.query.item || '').trim();
   const rawUrl = String(req.query.url || '').trim();
+  const resolvedAppBase = resolveValidUrl(shortAppBase || appBase, safeFallbackUrl);
 
   const defaultAppUrl = (() => {
     const params = new URLSearchParams();
@@ -125,7 +127,7 @@ export const sharePreview = onRequest(async (req, res) => {
       params.set('business', inferredBusinessId);
       params.set('item', inferredItemId);
     }
-    return params.toString() ? `${appBase}?${params.toString()}` : appBase;
+    return params.toString() ? `${resolvedAppBase}?${params.toString()}` : resolvedAppBase;
   })();
 
   const targetUrl = resolveValidUrl(rawUrl || defaultAppUrl, safeFallbackUrl);

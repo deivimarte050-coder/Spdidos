@@ -1720,20 +1720,37 @@ function AppContent() {
   };
 
   const buildRestaurantShareLink = (business: Business) => {
-    const previewBase = import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || 'https://us-central1-spdidos-8edda.cloudfunctions.net/sharePreview';
+    const base = `${window.location.origin}${window.location.pathname}`;
+    const appParams = new URLSearchParams({
+      share: 'restaurant',
+      business: business.id,
+    });
+    const appUrl = `${base}?${appParams.toString()}`;
+    const previewBase = String(import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || '').trim();
+    if (!previewBase) return appUrl;
     const previewParams = new URLSearchParams({
       t: 'r',
       b: business.id,
+      u: base,
     });
     return `${previewBase}?${previewParams.toString()}`;
   };
 
   const buildMenuItemShareLink = (business: Business, item: MenuItem) => {
-    const previewBase = import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || 'https://us-central1-spdidos-8edda.cloudfunctions.net/sharePreview';
+    const base = `${window.location.origin}${window.location.pathname}`;
+    const appParams = new URLSearchParams({
+      share: 'item',
+      business: business.id,
+      item: item.id,
+    });
+    const appUrl = `${base}?${appParams.toString()}`;
+    const previewBase = String(import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || '').trim();
+    if (!previewBase) return appUrl;
     const previewParams = new URLSearchParams({
       t: 'i',
       b: business.id,
       m: item.id,
+      u: base,
     });
     return `${previewBase}?${previewParams.toString()}`;
   };
