@@ -1720,44 +1720,21 @@ function AppContent() {
   };
 
   const buildRestaurantShareLink = (business: Business) => {
-    const base = `${window.location.origin}${window.location.pathname}`;
-    const params = new URLSearchParams({
-      share: 'restaurant',
-      business: business.id,
-      ...(business.image ? { img: business.image } : {}),
-    });
-    const appUrl = `${base}?${params.toString()}`;
     const previewBase = import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || 'https://us-central1-spdidos-8edda.cloudfunctions.net/sharePreview';
     const previewParams = new URLSearchParams({
-      type: 'restaurant',
-      business: business.id,
-      url: appUrl,
+      t: 'r',
+      b: business.id,
     });
-    if (business.image) previewParams.set('img', business.image);
     return `${previewBase}?${previewParams.toString()}`;
   };
 
   const buildMenuItemShareLink = (business: Business, item: MenuItem) => {
-    const base = `${window.location.origin}${window.location.pathname}`;
-    const params = new URLSearchParams({
-      share: 'item',
-      business: business.id,
-      item: item.id,
-      ...(item.image ? { img: item.image } : business.image ? { img: business.image } : {}),
-    });
-    const appUrl = `${base}?${params.toString()}`;
     const previewBase = import.meta.env.VITE_SHARE_PREVIEW_BASE_URL || 'https://us-central1-spdidos-8edda.cloudfunctions.net/sharePreview';
     const previewParams = new URLSearchParams({
-      type: 'item',
-      business: business.id,
-      item: item.id,
-      url: appUrl,
+      t: 'i',
+      b: business.id,
+      m: item.id,
     });
-    if (item.image) {
-      previewParams.set('img', item.image);
-    } else if (business.image) {
-      previewParams.set('img', business.image);
-    }
     return `${previewBase}?${previewParams.toString()}`;
   };
 

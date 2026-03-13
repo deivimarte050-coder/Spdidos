@@ -99,9 +99,36 @@ const resolveValidUrl = (value: string, fallback: string) => {
 
 // ─── Share preview (OG/Twitter cards) ────────────────────────────────────────
 export const sharePreview = onRequest(async (req, res) => {
-  const rawUrl = String(req.query.url || '').trim();
   const safeFallbackUrl = 'https://spdidos.vercel.app/';
-  const targetUrl = resolveValidUrl(rawUrl, safeFallbackUrl);
+  const appBase = process.env['SHARE_APP_BASE_URL'] || safeFallbackUrl;
+  const shortType = String(req.query.t || '').toLowerCase();
+  const shortBusinessId = String(req.query.b || '').trim();
+  const shortItemId = String(req.query.m || '').trim();
+
+  const inferredType = shortType === 'r'
+    ? 'restaurant'
+    : shortType === 'i'
+      ? 'item'
+      : String(req.query.type || 'app').toLowerCase();
+
+  const inferredBusinessId = shortBusinessId || String(req.query.business || '').trim();
+  const inferredItemId = shortItemId || String(req.query.item || '').trim();
+  const rawUrl = String(req.query.url || '').trim();
+
+  const defaultAppUrl = (() => {
+    const params = new URLSearchParams();
+    if (inferredType === 'restaurant' && inferredBusinessId) {
+      params.set('share', 'restaurant');
+      params.set('business', inferredBusinessId);
+    } else if (inferredType === 'item' && inferredBusinessId && inferredItemId) {
+      params.set('share', 'item');
+      params.set('business', inferredBusinessId);
+      params.set('item', inferredItemId);
+    }
+    return params.toString() ? `${appBase}?${params.toString()}` : appBase;
+  })();
+
+  const targetUrl = resolveValidUrl(rawUrl || defaultAppUrl, safeFallbackUrl);
   const appOrigin = (() => {
     try {
       return new URL(targetUrl).origin;
@@ -111,9 +138,9 @@ export const sharePreview = onRequest(async (req, res) => {
   })();
   const appImage = `${appOrigin}/logo_high_resolution.png`;
 
-  const type = String(req.query.type || 'app').toLowerCase();
-  const businessId = String(req.query.business || '').trim();
-  const itemId = String(req.query.item || '').trim();
+  const type = inferredType;
+  const businessId = inferredBusinessId;
+  const itemId = inferredItemId;
   const queryImage = String(req.query.img || '').trim();
 
   let title = 'Spdidos - Delivery & Mandados';
