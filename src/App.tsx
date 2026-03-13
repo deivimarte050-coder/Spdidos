@@ -2453,18 +2453,22 @@ function AppContent() {
               
               {selectedBusinessMenu.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {filteredMenuItems.map((item: any) => (
+                  {filteredMenuItems.map((item: any) => {
+                      const isUnavailable = item.available === false;
+                      return (
                       <div
                         key={item.id}
                         role="button"
-                        tabIndex={0}
+                        tabIndex={isUnavailable ? -1 : 0}
                         onClick={() => {
+                          if (isUnavailable) return;
                           setSelectedMenuItem(item);
                           setSelectedDrinkSize(null);
                           setModalQuantity(0);
                           setModalOptionQuantities({});
                         }}
                         onKeyDown={(e) => {
+                          if (isUnavailable) return;
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
                             setSelectedMenuItem(item);
@@ -2473,18 +2477,23 @@ function AppContent() {
                             setModalOptionQuantities({});
                           }
                         }}
-                        className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm cursor-pointer"
+                        className={`bg-white rounded-2xl overflow-hidden border shadow-sm ${isUnavailable ? 'border-gray-200 opacity-60 cursor-not-allowed' : 'border-gray-100 cursor-pointer'}`}
                       >
                         <div className="relative h-32 md:h-40 overflow-hidden w-full text-left">
                           <img
                             src={item.image || 'https://picsum.photos/seed/food/300/200'}
                             alt={item.name}
-                            className="w-full h-full object-cover"
+                            className={`w-full h-full object-cover ${isUnavailable ? 'grayscale' : ''}`}
                           />
+                          {isUnavailable && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <span className="bg-red-600 text-white text-xs font-black px-3 py-1.5 rounded-full uppercase tracking-wide">No disponible</span>
+                            </div>
+                          )}
                         </div>
                         <div className="p-3">
                           <div className="flex items-start justify-between gap-2">
-                            <h5 className="font-bold text-gray-900 text-[15px] leading-tight line-clamp-2">{item.name}</h5>
+                            <h5 className={`font-bold text-[15px] leading-tight line-clamp-2 ${isUnavailable ? 'text-gray-400' : 'text-gray-900'}`}>{item.name}</h5>
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2498,10 +2507,11 @@ function AppContent() {
                             </button>
                           </div>
                           <p className="text-sm text-gray-500 mt-1 line-clamp-2 min-h-[2.5rem]">{item.description || 'Sin descripción disponible'}</p>
-                          <p className="text-lg font-black text-gray-900 mt-2">RD$ {item.price}</p>
+                          <p className={`text-lg font-black mt-2 ${isUnavailable ? 'text-gray-400 line-through' : 'text-gray-900'}`}>RD$ {item.price}</p>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                 </div>
               ) : (
                 <div className="text-center py-12">
