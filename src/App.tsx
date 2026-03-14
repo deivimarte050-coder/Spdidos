@@ -531,7 +531,7 @@ const TrackingView: React.FC<{
       return;
     }
 
-    const limitMs = 5 * 60 * 1000;
+    const limitMs = ORDER_CANCEL_WINDOW_MS;
     const calc = () => Math.max(0, Math.round((startMs + limitMs - Date.now()) / 1000));
     setCancelSecsLeft(calc());
 
