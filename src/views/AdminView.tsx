@@ -34,6 +34,7 @@ import {
   ImagePlus,
   Save,
   MessageSquare,
+  MessageCircle,
   Send,
   CheckCircle2,
   Activity,
@@ -119,13 +120,9 @@ const AdminView: React.FC = () => {
   const realtimeAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const realtimeSoundEnabledRef = React.useRef(true);
 
-  // Support chat states
-  const [supportChats, setSupportChats] = useState<any[]>([]);
-  const [activeSupportChatId, setActiveSupportChatId] = useState<string | null>(null);
-  const [supportMessages, setSupportMessages] = useState<any[]>([]);
-  const [supportInput, setSupportInput] = useState('');
-  const [sendingSupportMsg, setSendingSupportMsg] = useState(false);
-  const supportBottomRef = React.useRef<HTMLDivElement>(null);
+  // WhatsApp support states
+  const [supportWhatsAppNumber, setSupportWhatsAppNumber] = useState('');
+  const [savingWhatsAppNumber, setSavingWhatsAppNumber] = useState(false);
 
   const [newBusiness, setNewBusiness] = useState({
     name: '',
@@ -230,25 +227,18 @@ const AdminView: React.FC = () => {
     };
   }, []);
 
-  // Support chats subscription
+  // Load WhatsApp support number
   useEffect(() => {
-    const unsub = FirebaseServiceV2.subscribeSupportChats((chats) => {
-      setSupportChats(chats);
-    });
-    return unsub;
+    const loadWhatsAppNumber = async () => {
+      try {
+        const number = await FirebaseServiceV2.getSupportWhatsAppNumber();
+        setSupportWhatsAppNumber(number);
+      } catch (error) {
+        console.error('Error loading WhatsApp support number:', error);
+      }
+    };
+    loadWhatsAppNumber();
   }, []);
-
-  // Support messages subscription
-  useEffect(() => {
-    if (!activeSupportChatId) { setSupportMessages([]); return; }
-    FirebaseServiceV2.markSupportChatRead(activeSupportChatId, 'admin');
-    const unsub = FirebaseServiceV2.subscribeSupportMessages(activeSupportChatId, (msgs) => {
-      setSupportMessages(msgs);
-      FirebaseServiceV2.markSupportChatRead(activeSupportChatId, 'admin');
-      setTimeout(() => supportBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-    });
-    return unsub;
-  }, [activeSupportChatId]);
 
   useEffect(() => {
     const unsubPopupAnnouncement = FirebaseServiceV2.subscribeToPopupAnnouncement((announcement) => {
@@ -626,6 +616,19 @@ const AdminView: React.FC = () => {
     }
   };
 
+  const handleSaveWhatsAppNumber = async () => {
+    setSavingWhatsAppNumber(true);
+    try {
+      await FirebaseServiceV2.saveSupportWhatsAppNumber(supportWhatsAppNumber);
+      alert('✅ Número de WhatsApp de soporte guardado exitosamente');
+    } catch (error: any) {
+      console.error('❌ Error guardando WhatsApp de soporte:', error);
+      alert(`❌ Error al guardar: ${error.message || 'Error desconocido'}`);
+    } finally {
+      setSavingWhatsAppNumber(false);
+    }
+  };
+
   const formatDateInputValue = (value?: string) => {
     if (!value) return '';
     const date = new Date(value);
@@ -743,7 +746,7 @@ const AdminView: React.FC = () => {
               {activeTab === 'notifications' && 'Envía notificaciones push a clientes, negocios, repartidores o a todos'}
               {activeTab === 'reports' && 'Analiza el rendimiento de la plataforma'}
               {activeTab === 'announcements' && 'Edita el banner principal mostrado en el home de clientes'}
-              {activeTab === 'support' && 'Gestiona las conversaciones de soporte con clientes'}
+              {activeTab === 'support' && 'Configura el número de WhatsApp para soporte de clientes'}
             </p>
           </div>
 
@@ -1974,203 +1977,73 @@ const AdminView: React.FC = () => {
             </motion.div>
           )}
 
-          {/* Support */}
+          {/* WhatsApp Support */}
           {activeTab === 'support' && (
             <motion.div
               key="support"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="flex gap-6 h-[calc(100vh-160px)]"
+              className="max-w-2xl mx-auto"
             >
-              {/* Chat list */}
-              <div className="w-80 flex-shrink-0 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-gray-100">
-                  <h3 className="font-black text-gray-900">Conversaciones</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">{supportChats.length} total</p>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  {supportChats.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center p-6">
-                      <MessageSquare className="w-10 h-10 text-gray-300 mb-3" />
-                      <p className="text-sm text-gray-400">No hay conversaciones aún</p>
-                    </div>
-                  ) : (
-                    supportChats.map((chat) => {
-                      const isActive = activeSupportChatId === chat.id;
-                      const lastAt = chat.lastMessageAt?.toDate ? chat.lastMessageAt.toDate() : (chat.lastMessageAt ? new Date(chat.lastMessageAt) : null);
-                      const timeStr = lastAt ? lastAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) : '';
-                      return (
-                        <button
-                          key={chat.id}
-                          onClick={() => { setActiveSupportChatId(chat.id); setSupportInput(''); }}
-                          className={`w-full flex items-start gap-3 p-4 border-b border-gray-50 text-left transition-colors ${isActive ? 'bg-primary/5' : 'hover:bg-gray-50'}`}
-                        >
-                          <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 border-gray-100">
-                            <img src={chat.clientPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.clientName}`} alt="" className="w-full h-full" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <p className={`font-bold text-sm truncate ${isActive ? 'text-primary' : 'text-gray-900'}`}>{chat.clientName}</p>
-                              <span className="text-[10px] text-gray-400 flex-shrink-0">{timeStr}</span>
-                            </div>
-                            <p className="text-xs text-gray-400 truncate mt-0.5">{chat.lastMessage || 'Sin mensajes'}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              {chat.status === 'closed' && (
-                                <span className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-bold">Cerrado</span>
-                              )}
-                              {(chat.unreadAdmin || 0) > 0 && (
-                                <span className="text-[9px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold">{chat.unreadAdmin} nuevo{chat.unreadAdmin > 1 ? 's' : ''}</span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Chat panel */}
-              <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-                {!activeSupportChatId ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <MessageSquare className="w-16 h-16 text-gray-200 mb-4" />
-                    <h4 className="font-bold text-gray-400 text-lg">Selecciona una conversación</h4>
-                    <p className="text-sm text-gray-300 mt-1">Elige un cliente del panel izquierdo para ver sus mensajes</p>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                    <MessageCircle className="w-6 h-6 text-green-600" />
                   </div>
-                ) : (() => {
-                  const activeChat = supportChats.find(c => c.id === activeSupportChatId);
-                  const formatMsgTime = (ts: any) => {
-                    if (!ts) return '';
-                    const d = ts.toDate ? ts.toDate() : new Date(ts);
-                    return d.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
-                  };
-                  const formatMsgDate = (ts: any) => {
-                    if (!ts) return '';
-                    const d = ts.toDate ? ts.toDate() : new Date(ts);
-                    return d.toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' });
-                  };
-                  let lastDateStr = '';
+                  <div>
+                    <h2 className="text-xl font-black text-gray-900">Soporte por WhatsApp</h2>
+                    <p className="text-sm text-gray-400">Configura el número de WhatsApp para soporte de clientes</p>
+                  </div>
+                </div>
 
-                  const handleSendSupportMsg = async () => {
-                    if (!supportInput.trim() || !activeSupportChatId || !user || sendingSupportMsg) return;
-                    const text = supportInput.trim();
-                    setSupportInput('');
-                    setSendingSupportMsg(true);
-                    try {
-                      await FirebaseServiceV2.sendSupportMessage(activeSupportChatId, user.id, user.name || 'Admin', 'admin', text);
-                      // Create in-app notification for client
-                      if (activeChat?.clientId) {
-                        await FirebaseServiceV2.createInAppNotification({
-                          userId: activeChat.clientId,
-                          title: 'Soporte Spdidos',
-                          message: text.slice(0, 100),
-                          source: 'system',
-                        });
-                      }
-                    } catch (e) {
-                      console.error('Error sending support msg:', e);
-                    }
-                    setSendingSupportMsg(false);
-                  };
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      Número de soporte WhatsApp
+                    </label>
+                    <input
+                      type="tel"
+                      value={supportWhatsAppNumber}
+                      onChange={(e) => setSupportWhatsAppNumber(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="809-XXX-XXXX"
+                    />
+                    <p className="text-xs text-gray-400 mt-2">
+                      Los clientes podrán contactar a este número para obtener ayuda con su cuenta, pedidos o problemas con la aplicación.
+                    </p>
+                  </div>
 
-                  return (
-                    <>
-                      {/* Chat header */}
-                      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-100">
-                            <img src={activeChat?.clientPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${activeChat?.clientName}`} alt="" className="w-full h-full" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-gray-900">{activeChat?.clientName || 'Cliente'}</p>
-                            <p className="text-[11px] text-gray-400">{activeChat?.status === 'closed' ? 'Cerrado' : 'Abierto'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {activeChat?.status === 'open' ? (
-                            <button
-                              onClick={async () => {
-                                if (confirm('¿Cerrar esta conversación como resuelta?')) {
-                                  await FirebaseServiceV2.closeSupportChat(activeSupportChatId);
-                                }
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold hover:bg-emerald-100 transition-colors"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Resolver
-                            </button>
-                          ) : (
-                            <button
-                              onClick={async () => {
-                                await FirebaseServiceV2.reopenSupportChat(activeSupportChatId);
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-100 transition-colors"
-                            >
-                              Reabrir
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                  <div className="bg-blue-50 rounded-xl p-4 space-y-3">
+                    <h3 className="font-black text-blue-900 text-sm">¿Cómo funciona el soporte?</h3>
+                    <ul className="text-sm text-blue-800 space-y-2">
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-600 mt-0.5">•</span>
+                        <span>Los clientes verán un botón "Contactar soporte por WhatsApp" en su perfil</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-600 mt-0.5">•</span>
+                        <span>Al presionarlo, se abrirá WhatsApp con este número preconfigurado</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-600 mt-0.5">•</span>
+                        <span>El mensaje incluirá: "Hola, necesito ayuda con la aplicación."</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-600 mt-0.5">•</span>
+                        <span>Los clientes pueden usarlo para recuperar contraseña, reportar problemas o solicitar ayuda</span>
+                      </li>
+                    </ul>
+                  </div>
 
-                      {/* Messages */}
-                      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1 bg-gray-50/50">
-                        {supportMessages.length === 0 ? (
-                          <div className="flex items-center justify-center h-full text-gray-300 text-sm">Sin mensajes</div>
-                        ) : (
-                          supportMessages.map((msg) => {
-                            const isAdmin = msg.senderRole === 'admin';
-                            const dateStr = formatMsgDate(msg.createdAt);
-                            let showDate = false;
-                            if (dateStr !== lastDateStr) { showDate = true; lastDateStr = dateStr; }
-                            return (
-                              <React.Fragment key={msg.id}>
-                                {showDate && (
-                                  <div className="flex justify-center my-3">
-                                    <span className="text-[10px] bg-gray-200 text-gray-500 px-3 py-1 rounded-full font-bold">{dateStr}</span>
-                                  </div>
-                                )}
-                                <div className={`flex ${isAdmin ? 'justify-end' : 'justify-start'} mb-1`}>
-                                  <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl ${
-                                    isAdmin
-                                      ? 'bg-primary text-white rounded-br-md'
-                                      : 'bg-white text-gray-900 border border-gray-100 rounded-bl-md'
-                                  }`}>
-                                    <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
-                                    <p className={`text-[10px] mt-1 ${isAdmin ? 'text-white/60' : 'text-gray-400'} text-right`}>{formatMsgTime(msg.createdAt)}</p>
-                                  </div>
-                                </div>
-                              </React.Fragment>
-                            );
-                          })
-                        )}
-                        <div ref={supportBottomRef} />
-                      </div>
-
-                      {/* Input */}
-                      <div className="px-4 py-3 border-t border-gray-100 bg-white">
-                        <div className="flex items-end gap-2">
-                          <textarea
-                            value={supportInput}
-                            onChange={(e) => setSupportInput(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendSupportMsg(); } }}
-                            placeholder={activeChat?.status === 'closed' ? 'Conversación cerrada...' : 'Escribe tu respuesta...'}
-                            disabled={activeChat?.status === 'closed'}
-                            rows={1}
-                            className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 max-h-24 disabled:bg-gray-50 disabled:text-gray-400"
-                          />
-                          <button
-                            onClick={handleSendSupportMsg}
-                            disabled={!supportInput.trim() || sendingSupportMsg || activeChat?.status === 'closed'}
-                            className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary/90 transition-all disabled:opacity-40"
-                          >
-                            <Send className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
+                  <button
+                    onClick={handleSaveWhatsAppNumber}
+                    disabled={savingWhatsAppNumber}
+                    className="w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 bg-green-600 text-white hover:bg-green-700 transition-all disabled:opacity-50"
+                  >
+                    {savingWhatsAppNumber ? 'Guardando...' : 'Guardar número de WhatsApp'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}

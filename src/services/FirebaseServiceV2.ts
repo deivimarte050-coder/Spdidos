@@ -975,6 +975,33 @@ class FirebaseServiceV2 {
       throw error;
     }
   }
+
+  // Support WhatsApp number methods
+  async getSupportWhatsAppNumber(): Promise<string> {
+    try {
+      const snap = await getDoc(doc(db, COLLECTIONS.SETTINGS, 'support_whatsapp'));
+      if (snap.exists()) {
+        const data = snap.data();
+        return data.phoneNumber || '';
+      }
+      return '';
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error getting support WhatsApp number:', error);
+      return '';
+    }
+  }
+
+  async saveSupportWhatsAppNumber(phoneNumber: string): Promise<void> {
+    try {
+      await setDoc(doc(db, COLLECTIONS.SETTINGS, 'support_whatsapp'), {
+        phoneNumber,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('❌ [FirebaseV2] Error saving support WhatsApp number:', error);
+      throw error;
+    }
+  }
 }
 
 export default new FirebaseServiceV2();

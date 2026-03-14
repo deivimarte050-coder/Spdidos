@@ -82,127 +82,25 @@ function buildCancelledRingWav(): string {
 }
 
 class SoundService {
-  private audio: HTMLAudioElement;
-  private cancelledAudio: HTMLAudioElement;
-  private activeAudio: HTMLAudioElement | null = null;
-  private audioContext: AudioContext | null = null;
-  private active = false;
   private warmedUp = false;
 
   constructor() {
-    this.audio       = new Audio(buildRingWav());
-    this.audio.loop  = true;
-    this.audio.volume = 1;
-    this.audio.preload = 'auto';
-    this.audio.setAttribute('playsinline', 'true');
-
-    this.cancelledAudio = new Audio(buildCancelledRingWav());
-    this.cancelledAudio.loop = true;
-    this.cancelledAudio.volume = 1;
-    this.cancelledAudio.preload = 'auto';
-    this.cancelledAudio.setAttribute('playsinline', 'true');
-
-    this.setupLoudPlaybackPipeline();
-
-    // Warm up: play-then-pause on first user interaction so later calls
-    // from Firestore callbacks are guaranteed to succeed.
-    // Also starts a silent AudioContext loop to keep the background tab alive
-    // so Chrome doesn't suspend JS execution (and Firestore subscriptions keep firing).
-    const warmUp = () => {
-      if (this.warmedUp) return;
-      this.warmedUp = true;
-      this.audioContext?.resume().catch(() => {});
-      [this.audio, this.cancelledAudio].forEach((audioEl) => {
-        audioEl.play().then(() => {
-          if (!this.active) {
-            audioEl.pause();
-            audioEl.currentTime = 0;
-          }
-        }).catch(() => {});
-      });
-      this.startSilentLoop();
-    };
-    document.addEventListener('click',    warmUp, { passive: true });
-    document.addEventListener('touchend', warmUp, { passive: true });
-    document.addEventListener('keydown',  warmUp, { passive: true });
-  }
-
-  private setupLoudPlaybackPipeline() {
-    try {
-      const ctx = new AudioContext();
-      this.audioContext = ctx;
-
-      const ringSource = ctx.createMediaElementSource(this.audio);
-      const ringGain = ctx.createGain();
-      ringGain.gain.value = 2.6;
-      ringSource.connect(ringGain);
-      ringGain.connect(ctx.destination);
-
-      const cancelledSource = ctx.createMediaElementSource(this.cancelledAudio);
-      const cancelledGain = ctx.createGain();
-      cancelledGain.gain.value = 2.9;
-      cancelledSource.connect(cancelledGain);
-      cancelledGain.connect(ctx.destination);
-    } catch {
-      this.audioContext = null;
-    }
-  }
-
-  /** Plays a completely inaudible 1-sample loop via Web Audio API.
-   *  Chrome treats the tab as "using audio" and will not suspend it,
-   *  allowing Firestore subscriptions to keep delivering updates in background. */
-  private startSilentLoop() {
-    try {
-      const ctx = new AudioContext();
-      const buf = ctx.createBuffer(1, 1, 22050); // 1 sample ≈ silent
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.loop   = true;
-      // Connect through a GainNode at 0 gain so literally nothing is audible
-      const gain = ctx.createGain();
-      gain.gain.value = 0;
-      src.connect(gain);
-      gain.connect(ctx.destination);
-      src.start(0);
-    } catch { /* AudioContext unavailable — ignore */ }
+    // Audio functionality disabled - no sounds will play
   }
 
   startRinging() {
-    this.startWithAudio(this.audio);
+    // Audio disabled - no sound
   }
 
   startCancelledRinging() {
-    this.startWithAudio(this.cancelledAudio);
-  }
-
-  private startWithAudio(audioEl: HTMLAudioElement) {
-    if (this.active && this.activeAudio === audioEl) return;
-    if (this.activeAudio && this.activeAudio !== audioEl) {
-      this.activeAudio.pause();
-      this.activeAudio.currentTime = 0;
-    }
-    this.active = true;
-    this.activeAudio = audioEl;
-    audioEl.currentTime = 0;
-    this.audioContext?.resume().catch(() => {});
-    audioEl.play().catch(() => {
-      // Last resort: try again on next tick (handles edge-case timing)
-      setTimeout(() => {
-        if (this.active && this.activeAudio === audioEl) audioEl.play().catch(() => {});
-      }, 100);
-    });
+    // Audio disabled - no sound
   }
 
   stopRinging() {
-    this.active = false;
-    this.audio.pause();
-    this.audio.currentTime = 0;
-    this.cancelledAudio.pause();
-    this.cancelledAudio.currentTime = 0;
-    this.activeAudio = null;
+    // Audio disabled - no sound to stop
   }
 
-  get isRinging() { return this.active; }
+  get isRinging() { return false; }
 }
 
 export const soundService = new SoundService();

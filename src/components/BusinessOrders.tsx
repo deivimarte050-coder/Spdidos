@@ -342,11 +342,6 @@ const BusinessOrders: React.FC = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black font-display text-gray-900">Pedidos en Tiempo Real</h2>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => { soundService.startRinging(); setTimeout(() => soundService.stopRinging(), 4000); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-xl text-xs font-bold hover:bg-yellow-200 transition-all">
-            <Volume2 className="w-3.5 h-3.5" /> Test sonido
-          </button>
           <div className="flex items-center gap-2 bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-xl">
             <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse" />
             <span className="text-xs font-bold">{counts.active} activos</span>
