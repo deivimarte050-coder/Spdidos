@@ -454,8 +454,30 @@ const TrackingView: React.FC<{
   onBack: () => void;
   onCancelOrder?: (order: Order) => void;
 }> = ({ orderId, orders, deliveryLocation, onBack, onCancelOrder }) => {
-  const order = orderId ? orders.find(o => o.id === orderId) || orders[0] : orders[0];
-  const stepIndex = order ? ORDER_STEPS.findIndex(s => s.status === order.status) : 0;
+  const order = orderId ? orders.find(o => o.id === orderId) : orders[0];
+  
+  // If no order found, show error message
+  if (!order) {
+    return (
+      <div className="max-w-lg mx-auto space-y-6 px-4 py-6">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+            <X className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-2xl font-black text-gray-900">Pedido no encontrado</h2>
+          <p className="text-gray-500">No se pudo encontrar la información del pedido solicitado.</p>
+          <button
+            onClick={onBack}
+            className="px-6 py-3 bg-primary text-white rounded-2xl font-black hover:bg-primary/90 transition-all"
+          >
+            Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  const stepIndex = ORDER_STEPS.findIndex(s => s.status === order.status);
   const deliverPos: [number, number] = deliveryLocation ? [deliveryLocation.lat, deliveryLocation.lng] : SPM_CENTER;
 
   const [secsLeft, setSecsLeft] = useState<number | null>(null);
@@ -690,21 +712,13 @@ const TrackingView: React.FC<{
               </span>
             </div>
             <div className="h-[280px]">
-              <MapContainer center={deliverPos} zoom={15} className="h-full w-full" scrollWheelZoom={false}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <MapAutoFit positions={clientPos ? [deliverPos, clientPos] : [deliverPos]} />
-                <Marker position={deliverPos} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png', iconSize: [36, 36], iconAnchor: [18, 36] })}>
-                  <Popup>🛵 Tu repartidor</Popup>
-                </Marker>
-                {clientPos && (
-                  <Marker position={clientPos} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/484/484167.png', iconSize: [32, 32], iconAnchor: [16, 32] })}>
-                    <Popup>📍 Tu ubicación</Popup>
-                  </Marker>
-                )}
-                {routePositions.length === 2 && (
-                  <Polyline positions={routePositions} pathOptions={{ color: '#3b82f6', weight: 4, dashArray: '10, 8', opacity: 0.8 }} />
-                )}
-              </MapContainer>
+              <div className="h-full w-full bg-gray-100 flex items-center justify-center">
+                <div className="text-center">
+                  <Navigation className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Mapa de seguimiento</p>
+                  <p className="text-xs text-gray-400">El repartidor está en camino</p>
+                </div>
+              </div>
             </div>
             <div className="p-3 bg-blue-50/60 flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1.5">
@@ -754,6 +768,9 @@ if ('Notification' in window && Notification.permission === 'default') {
 
 // ─── Push notification helper ────────────────────────────────────────────────
 // Role-based notification function will be defined inside AppContent component
+
+// ─── Constants ─────────────────────────────────────────────────────────────────────
+const ORDER_CANCEL_WINDOW_MS = 2 * 60 * 1000;
 
 // ─── Client Profile View ──────────────────────────────────────────────────────
 const ProfileView: React.FC<{ onViewChange: (v: any) => void }> = ({ onViewChange }) => {
@@ -1955,8 +1972,6 @@ function AppContent() {
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
       );
     });
-
-  const ORDER_CANCEL_WINDOW_MS = 2 * 60 * 1000;
 
   const getOrderCreatedMs = (order: Order): number | null => {
     const parsed = new Date(order.createdAt as string).getTime();
