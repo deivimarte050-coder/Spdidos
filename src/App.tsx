@@ -648,7 +648,7 @@ const TrackingView: React.FC<{
 
       {cancelSecsLeft !== null && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
-          <p className="text-sm font-bold text-red-700">Cancelar pedido (solo en los primeros 5 minutos)</p>
+          <p className="text-sm font-bold text-red-700">Cancelar pedido (solo en los primeros 2 minutos)</p>
           {cancelSecsLeft > 0 ? (
             <>
               <p className="text-xs text-red-600 font-semibold">
@@ -1956,7 +1956,7 @@ function AppContent() {
       );
     });
 
-  const ORDER_CANCEL_WINDOW_MS = 5 * 60 * 1000;
+  const ORDER_CANCEL_WINDOW_MS = 2 * 60 * 1000;
 
   const getOrderCreatedMs = (order: Order): number | null => {
     const parsed = new Date(order.createdAt as string).getTime();
