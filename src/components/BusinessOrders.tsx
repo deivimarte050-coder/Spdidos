@@ -73,6 +73,9 @@ const OrderDetailsModal: React.FC<{ order: Order; onClose: () => void }> = ({ or
             <p><span className="font-black text-blue-900">Nombre:</span> <span className="text-blue-900">{order.clientName || 'No disponible'}</span></p>
             <p><span className="font-black text-blue-900">Teléfono:</span> <span className="text-blue-900">{order.clientPhone || order.clientWhatsapp || 'No disponible'}</span></p>
             <p><span className="font-black text-blue-900">Dirección exacta:</span> <span className="text-blue-900">{order.deliveryAddress || 'No disponible'}</span></p>
+            {order.clientAddressDescription && (
+              <p><span className="font-black text-blue-900">Descripción de la dirección:</span> <span className="text-blue-900">{order.clientAddressDescription}</span></p>
+            )}
             <p><span className="font-black text-blue-900">Nota del cliente:</span> <span className="text-blue-900">{clientNote}</span></p>
           </div>
 

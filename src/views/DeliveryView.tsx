@@ -781,6 +781,11 @@ const DeliveryView: React.FC = () => {
                       <MapPin className="w-3 h-3" />
                       <span>{myOrder.deliveryAddress || 'Dirección del cliente'}</span>
                     </div>
+                    {myOrder.clientAddressDescription && (
+                      <div className="text-sm text-gray-600 mt-1 bg-blue-50 rounded-lg p-2">
+                        <span className="font-black text-blue-700">Descripción:</span> {myOrder.clientAddressDescription}
+                      </div>
+                    )}
                     {getBusinessLocTuple() && (
                       <button
                         type="button"

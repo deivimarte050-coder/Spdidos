@@ -232,6 +232,9 @@ const AcceptedOrderSummaryModal: React.FC<{
               <p><span className="font-black text-blue-900">Nombre:</span> <span className="text-blue-900">{order.clientName || 'No disponible'}</span></p>
               <p><span className="font-black text-blue-900">Teléfono:</span> <span className="text-blue-900">{order.clientPhone || order.clientWhatsapp || 'No disponible'}</span></p>
               <p><span className="font-black text-blue-900">Dirección exacta:</span> <span className="text-blue-900">{order.deliveryAddress || 'No disponible'}</span></p>
+              {order.clientAddressDescription && (
+                <p><span className="font-black text-blue-900">Descripción de la dirección:</span> <span className="text-blue-900">{order.clientAddressDescription}</span></p>
+              )}
               <p><span className="font-black text-blue-900">Nota del cliente:</span> <span className="text-blue-900">{mergedClientNote}</span></p>
             </div>
           </div>
@@ -755,14 +758,14 @@ if ('Notification' in window && Notification.permission === 'default') {
 // ─── Client Profile View ──────────────────────────────────────────────────────
 const ProfileView: React.FC<{ onViewChange: (v: any) => void }> = ({ onViewChange }) => {
   const { user, logout, updateUser } = useAuth();
-  const [form, setForm] = useState({ name: user?.name ?? '', phone: user?.phone ?? '', whatsapp: user?.whatsapp ?? '' });
+  const [form, setForm] = useState({ name: user?.name ?? '', phone: user?.phone ?? '', whatsapp: user?.whatsapp ?? '', addressDescription: user?.addressDescription ?? '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateUser({ name: form.name.trim(), phone: form.phone.trim(), whatsapp: form.whatsapp.trim() });
+      await updateUser({ name: form.name.trim(), phone: form.phone.trim(), whatsapp: form.whatsapp.trim(), addressDescription: form.addressDescription.trim() });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch {
@@ -838,6 +841,19 @@ const ProfileView: React.FC<{ onViewChange: (v: any) => void }> = ({ onViewChang
             className="border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
             placeholder="809-XXX-XXXX"
           />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-gray-500 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Descripción de la dirección (opcional)</span>
+          <textarea
+            value={form.addressDescription}
+            onChange={e => setForm(f => ({ ...f, addressDescription: e.target.value.slice(0, 200) }))}
+            className="border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all resize-none"
+            placeholder="Escribe detalles para ayudar al repartidor a encontrar tu casa. Ejemplo: color de la casa, qué hay al frente, referencias cercanas."
+            rows={3}
+            maxLength={200}
+          />
+          <p className="text-xs text-gray-400 text-right">{form.addressDescription.length}/200 caracteres</p>
         </label>
 
         <button
@@ -2224,6 +2240,7 @@ function AppContent() {
         clientEmail: user.email,
         clientPhone: user.phone || user.whatsapp,
         clientWhatsapp: user.whatsapp,
+        clientAddressDescription: user.addressDescription || '',
         businessId: selectedBusiness.id,
         businessName: selectedBusiness.name,
         businessEmail: selectedBusiness.email || '',

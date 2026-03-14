@@ -25,6 +25,7 @@ export interface User {
   createdAt?: string;
   businessId?: string;
   uid?: string;
+  addressDescription?: string;
 }
 
 export interface Application {
@@ -125,6 +126,7 @@ export interface Order {
   clientEmail: string;
   clientPhone: string;
   clientWhatsapp?: string;
+  clientAddressDescription?: string;
   businessId: string;
   businessName: string;
   businessEmail: string;
