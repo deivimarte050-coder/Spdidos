@@ -1095,8 +1095,15 @@ function AppContent() {
     };
 
     const syncFCMToken = async () => {
+      console.log('[App] Sincronizando token FCM para usuario:', user?.id, 'rol:', user?.role);
+      
       const token = await initFCMToken();
-      if (!isMounted || !token) return;
+      if (!isMounted || !token) {
+        console.warn('[App] No se pudo obtener token FCM');
+        return;
+      }
+      
+      console.log('[App] Token FCM obtenido, guardando...');
       const businessId = await resolveBusinessId();
       await FirebaseServiceV2.saveFCMToken(
         user.id,
@@ -1104,6 +1111,7 @@ function AppContent() {
         user.role,
         businessId ?? undefined
       );
+      console.log('[App] Token FCM sincronizado exitosamente');
     };
 
     syncFCMToken();
@@ -1120,8 +1128,46 @@ function AppContent() {
     }, 1000 * 60 * 30);
 
     const unsubForeground = listenFCMForeground(({ title, body, tag }) => {
+      console.log('[App] Notificación foreground recibida:', { title, body, tag });
       showPushNotificationForRole(title, body, ['client', 'business', 'delivery', 'admin'], tag);
     });
+
+    // Add global notification test function for debugging
+    (window as any).testNotification = async (role: 'client' | 'business' | 'delivery' | 'admin') => {
+      console.log('[DEBUG] Enviando notificación de prueba a rol:', role);
+      try {
+        await FirebaseServiceV2.sendPushNotificationToRoles({
+          title: '🔔 Notificación de Prueba',
+          body: `Esta es una notificación de prueba para rol: ${role}`,
+          roles: [role],
+          tag: 'test-notification'
+        });
+        console.log('[DEBUG] Notificación de prueba enviada exitosamente');
+      } catch (error) {
+        console.error('[DEBUG] Error enviando notificación de prueba:', error);
+      }
+    };
+
+    // Add immediate browser notification test
+    (window as any).testBrowserNotification = (title: string, body: string) => {
+      console.log('[DEBUG] Enviando notificación directa del navegador');
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, {
+          body,
+          icon: '/logo_high_resolution.png',
+          badge: '/logo_high_resolution.png',
+          tag: 'browser-test',
+          requireInteraction: true
+        });
+        console.log('[DEBUG] Notificación del navegador enviada');
+      } else {
+        console.warn('[DEBUG] Permiso de notificaciones no concedido');
+      }
+    };
+
+    console.log('[DEBUG] Para probar notificaciones:');
+    console.log('- FCM: testNotification("client"), testNotification("business"), etc.');
+    console.log('- Navegador: testBrowserNotification("Título", "Mensaje")');
 
     return () => {
       isMounted = false;

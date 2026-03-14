@@ -611,22 +611,38 @@ class FirebaseServiceV2 {
 
   async saveFCMToken(userId: string, token: string, role: string, businessId?: string) {
     try {
+      console.log('[FCM] Guardando token para usuario:', userId, 'rol:', role);
+      
       const safeUserId = String(userId || '').trim();
       const safeToken = String(token || '').trim();
-      if (!safeUserId || !safeToken) return;
+      if (!safeUserId || !safeToken) {
+        console.error('[FCM] Datos inválidos - userId o token vacíos');
+        return;
+      }
 
       const tokenKey = safeToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
       const documentId = `${safeUserId}_${tokenKey}`;
       const now = new Date().toISOString();
 
-      await setDoc(doc(db, COLLECTIONS.FCM_TOKENS, documentId), {
+      const tokenData = {
         token,
         role,
         userId: safeUserId,
         businessId: businessId || null,
         updatedAt: now,
         createdAt: now,
-      }, { merge: true });
+      };
+
+      console.log('[FCM] Datos del token a guardar:', {
+        documentId,
+        role,
+        businessId,
+        tokenLength: safeToken.length,
+        tokenPreview: safeToken.substring(0, 20) + '...'
+      });
+
+      await setDoc(doc(db, COLLECTIONS.FCM_TOKENS, documentId), tokenData, { merge: true });
+      console.log('[FCM] Token guardado exitosamente para:', role, userId);
     } catch (err) {
       console.error('[FCM] Error saving token:', err);
     }

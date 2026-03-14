@@ -33,6 +33,8 @@ function showNotificationFromPayload(input = {}) {
   const tag = data.tag || notif.tag || 'spdidos-fcm';
   const url = data.link || data.url || DEFAULT_URL;
 
+  console.log('[SW] Mostrando notificación:', { title, body, tag });
+
   return self.registration.showNotification(title, {
     body,
     icon,
@@ -48,12 +50,14 @@ function showNotificationFromPayload(input = {}) {
 // FCM background messages (received when browser is in background / phone locked)
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {
+    console.log('[SW] Mensaje FCM recibido en background:', payload);
     showNotificationFromPayload(payload);
   });
 }
 
 if (!messaging) {
   self.addEventListener('push', (event) => {
+    console.log('[SW] Evento push recibido');
     if (!event.data) return;
     let payload = {};
     try {
@@ -61,9 +65,32 @@ if (!messaging) {
     } catch {
       payload = { body: event.data.text() };
     }
+    console.log('[SW] Procesando payload push:', payload);
     event.waitUntil(showNotificationFromPayload(payload));
   });
 }
+
+// Handle notification clicks
+self.addEventListener('notificationclick', (event) => {
+  console.log('[SW] Notificación clickeada:', event.notification.tag);
+  event.notification.close();
+  
+  const urlToOpen = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then((clientList) => {
+      // Check if a client is already open
+      for (const client of clientList) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Open new window
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
 
 const CACHE = 'spdidos-v2';
 const PRECACHE_URLS = ['/', '/manifest.json', '/logo_high_resolution.png'];
