@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "573150906777",
+    "project_id": "spdidos-8edda",
+    "storage_bucket": "spdidos-8edda.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:573150906777:android:0f42ebe1ffae8e96736b08",
+        "android_client_info": {
+          "package_name": "app.spdidos.client"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "573150906777-a9ubsbu35e72v07uilohdglrfd7t99l4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLu0vtyuEoETWo5DO_0mBrARiQFoVYmbw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "573150906777-a9ubsbu35e72v07uilohdglrfd7t99l4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

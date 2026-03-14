@@ -35,7 +35,11 @@ import {
   Save,
   MessageSquare,
   Send,
-  CheckCircle2
+  CheckCircle2,
+  Activity,
+  Volume2,
+  VolumeX,
+  Eye
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { LOGO_URL } from '../constants';
@@ -66,7 +70,7 @@ const FINALIZED_ORDER_STATUSES = ['delivered', 'cancelled'];
 
 const AdminView: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'users' | 'reports' | 'announcements' | 'notifications' | 'support'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'create-business' | 'create-delivery' | 'orders' | 'realtime-orders' | 'users' | 'reports' | 'announcements' | 'notifications' | 'support'>('dashboard');
   const [deliveryUsers, setDeliveryUsers] = useState<AppUser[]>([]);
   const [orderFilter, setOrderFilter] = useState<string>('active');
   const [newDelivery, setNewDelivery] = useState({ name: '', email: '', phone: '', whatsapp: '', password: '', vehicleType: '', cedula: '' });
@@ -105,6 +109,14 @@ const AdminView: React.FC = () => {
     message: string;
     publishedAt: string;
   } | null>(null);
+
+  // Real-time orders states
+  const [realtimeSoundEnabled, setRealtimeSoundEnabled] = useState(true);
+  const [newOrderAlert, setNewOrderAlert] = useState<any | null>(null);
+  const knownOrderIdsRef = React.useRef<Set<string>>(new Set());
+  const isFirstLoadRef = React.useRef(true);
+  const realtimeAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const realtimeSoundEnabledRef = React.useRef(true);
 
   // Support chat states
   const [supportChats, setSupportChats] = useState<any[]>([]);
@@ -170,9 +182,42 @@ const AdminView: React.FC = () => {
     loadStaticData();
     const intervalId = setInterval(loadStaticData, 60000);
 
-    // Real-time orders subscription
+    // Real-time orders subscription with new order detection
     const unsubOrders = FirebaseServiceV2.subscribeToOrders((ordersData) => {
-      setOrders(ordersData as Order[]);
+      const typedOrders = ordersData as Order[];
+      setOrders(typedOrders);
+
+      // Detect new orders
+      const currentIds = new Set(typedOrders.map(o => o.id));
+      if (isFirstLoadRef.current) {
+        knownOrderIdsRef.current = currentIds;
+        isFirstLoadRef.current = false;
+        return;
+      }
+
+      const newOrders = typedOrders.filter(o => !knownOrderIdsRef.current.has(o.id));
+      if (newOrders.length > 0) {
+        const latest = newOrders[0];
+        setNewOrderAlert(latest);
+        setTimeout(() => setNewOrderAlert(null), 8000);
+
+        // Play sound
+        try {
+          if (realtimeSoundEnabledRef.current && realtimeAudioRef.current) {
+            realtimeAudioRef.current.currentTime = 0;
+            realtimeAudioRef.current.play().catch(() => {});
+          }
+        } catch (_) {}
+
+        // Browser notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification(`Nuevo Pedido - ${latest.businessName}`, {
+            body: `Cliente: ${(latest as any).clientName || 'N/A'}\nTotal: RD$ ${latest.total?.toFixed(0)}\n#${latest.id?.slice(-8).toUpperCase()}`,
+            icon: '/favicon.ico',
+          });
+        }
+      }
+      knownOrderIdsRef.current = currentIds;
     });
 
     const unsubLocal = DataService.subscribe(() => {});
@@ -341,6 +386,7 @@ const AdminView: React.FC = () => {
     { id: 'create-delivery', label: 'Crear Repartidor', icon: Truck },
     { id: 'businesses', label: 'Lista de Negocios', icon: Store },
     { id: 'orders', label: 'Ver Pedidos', icon: ShoppingCart },
+    { id: 'realtime-orders', label: 'Pedidos en Tiempo Real', icon: Activity },
     { id: 'users', label: 'Usuarios', icon: Users },
     { id: 'notifications', label: 'Notificaciones', icon: Bell },
     { id: 'reports', label: 'Reportes', icon: FileText },
@@ -679,6 +725,7 @@ const AdminView: React.FC = () => {
               {activeTab === 'create-delivery' && 'Registra un nuevo repartidor con acceso al panel'}
               {activeTab === 'businesses' && 'Gestiona todos los negocios activos'}
               {activeTab === 'orders' && 'Monitorea todos los pedidos en tiempo real'}
+              {activeTab === 'realtime-orders' && 'Recibe alertas en vivo de todos los negocios'}
               {activeTab === 'users' && 'Administra todos los usuarios registrados'}
               {activeTab === 'notifications' && 'Envía notificaciones push a clientes, negocios, repartidores o a todos'}
               {activeTab === 'reports' && 'Analiza el rendimiento de la plataforma'}
@@ -1339,6 +1386,160 @@ const AdminView: React.FC = () => {
                     <Package className="w-14 h-14 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-400 font-bold">No hay pedidos en esta categoría</p>
                   </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Realtime Orders */}
+          {activeTab === 'realtime-orders' && (
+            <motion.div key="realtime-orders" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-4">
+              {/* Audio element for notification sound */}
+              <audio ref={realtimeAudioRef} src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
+
+              {/* New order alert banner */}
+              <AnimatePresence>
+                {newOrderAlert && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                    className="bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-2xl p-5 shadow-lg border border-emerald-400 flex items-center gap-4"
+                  >
+                    <div className="bg-white/20 rounded-full p-3 animate-pulse">
+                      <ShoppingCart className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-black text-lg">Nuevo Pedido Recibido</p>
+                      <p className="text-white/90 text-sm">
+                        {newOrderAlert.businessName} &middot; #{newOrderAlert.id?.slice(-8).toUpperCase()} &middot; Cliente: {(newOrderAlert as any).clientName || 'N/A'} &middot; <span className="font-bold">RD$ {newOrderAlert.total?.toFixed(0)}</span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setActiveTab('orders'); setNewOrderAlert(null); }}
+                      className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all"
+                    >
+                      <Eye className="w-4 h-4" /> Ver Pedido
+                    </button>
+                    <button onClick={() => setNewOrderAlert(null)} className="text-white/60 hover:text-white transition-colors">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Controls bar */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="bg-emerald-100 p-2.5 rounded-xl">
+                    <Activity className="w-5 h-5 text-emerald-600 animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="font-black text-gray-900">Escuchando pedidos en vivo</p>
+                    <p className="text-xs text-gray-400">{orders.filter(o => o.status === 'pending').length} pendientes &middot; {orders.filter(o => ACTIVE_ORDER_STATUSES.includes(o.status)).length} activos &middot; {orders.length} totales</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      if ('Notification' in window && Notification.permission !== 'granted') {
+                        Notification.requestPermission();
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-bold bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' ? 'Notificaciones Activas' : 'Activar Notificaciones'}
+                  </button>
+                  <button
+                    onClick={() => { const next = !realtimeSoundEnabled; setRealtimeSoundEnabled(next); realtimeSoundEnabledRef.current = next; }}
+                    className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+                      realtimeSoundEnabled
+                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'
+                        : 'bg-gray-50 text-gray-400 border border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    {realtimeSoundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                    {realtimeSoundEnabled ? 'Sonido ON' : 'Sonido OFF'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Pendientes', count: orders.filter(o => o.status === 'pending').length, color: 'bg-yellow-50 text-yellow-700 border-yellow-100', icon: Clock },
+                  { label: 'Preparando', count: orders.filter(o => o.status === 'accepted' || o.status === 'preparing').length, color: 'bg-orange-50 text-orange-700 border-orange-100', icon: ChefHat },
+                  { label: 'Listos', count: orders.filter(o => o.status === 'ready').length, color: 'bg-purple-50 text-purple-700 border-purple-100', icon: Package },
+                  { label: 'En Camino', count: orders.filter(o => o.status === 'on_the_way' || o.status === 'picked_up').length, color: 'bg-indigo-50 text-indigo-700 border-indigo-100', icon: Truck },
+                ].map((s) => (
+                  <div key={s.label} className={`rounded-2xl border p-4 ${s.color}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <s.icon className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase">{s.label}</span>
+                    </div>
+                    <p className="text-3xl font-black">{s.count}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Live feed - recent orders */}
+              <div className="space-y-3">
+                <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+                  Feed en vivo — Últimos pedidos
+                </h3>
+                {orders.length === 0 ? (
+                  <div className="bg-white p-12 rounded-2xl border border-dashed border-gray-200 text-center">
+                    <Activity className="w-14 h-14 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-400 font-bold">Esperando nuevos pedidos...</p>
+                    <p className="text-xs text-gray-300 mt-1">Los pedidos aparecerán aquí automáticamente</p>
+                  </div>
+                ) : (
+                  orders.slice(0, 30).map((order) => {
+                    const STATUS_LABELS: Record<string, string> = { pending: 'Pendiente', accepted: 'Aceptado', preparing: 'Preparando', ready: 'Listo', on_the_way: 'En Camino', picked_up: 'Recogido', delivered: 'Entregado', cancelled: 'Cancelado' };
+                    const STATUS_COLORS: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-700', accepted: 'bg-blue-100 text-blue-700', preparing: 'bg-orange-100 text-orange-700', ready: 'bg-purple-100 text-purple-700', on_the_way: 'bg-indigo-100 text-indigo-700', picked_up: 'bg-indigo-100 text-indigo-700', delivered: 'bg-emerald-100 text-emerald-700', cancelled: 'bg-red-100 text-red-700' };
+                    const isNew = !knownOrderIdsRef.current.has(order.id) || (newOrderAlert && newOrderAlert.id === order.id);
+                    return (
+                      <motion.div
+                        key={order.id}
+                        initial={isNew ? { opacity: 0, x: -20, scale: 0.98 } : false}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        className={`bg-white rounded-2xl border shadow-sm p-5 transition-all ${isNew ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-gray-100'}`}
+                      >
+                        <div className="flex items-start justify-between flex-wrap gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${(order as any).clientName || order.clientId}`} alt="" className="w-10 h-10" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900">{(order as any).clientName || 'Cliente'}</p>
+                              <p className="text-xs text-gray-400">{order.businessName} &middot; #{order.id?.slice(-8).toUpperCase()}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-700'}`}>
+                              {STATUS_LABELS[order.status] || order.status}
+                            </span>
+                            <span className="font-black text-emerald-600 text-lg">RD$ {order.total?.toFixed(0)}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+                          <div className="flex items-center gap-4 text-xs text-gray-400">
+                            <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{new Date(order.createdAt).toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                            <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{new Date(order.createdAt).toLocaleDateString('es-DO')}</span>
+                            <span className="flex items-center gap-1"><Package className="w-3.5 h-3.5" />{order.items?.length || 0} items</span>
+                          </div>
+                          <button
+                            onClick={() => { setActiveTab('orders'); }}
+                            className="text-xs font-bold text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Ver detalle
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })
                 )}
               </div>
             </motion.div>
