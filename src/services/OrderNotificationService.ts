@@ -19,22 +19,26 @@ class OrderNotificationService {
    */
   async notifyNewOrder(data: OrderNotificationData): Promise<void> {
     try {
+      // TODO: FCM notifications disabled until Cloud Function is fixed to respect role filtering
+      // The current Cloud Function sends notifications to ALL users regardless of role
+      // Only browser notifications (already role-filtered) will work for now
+      
       // Send to the specific business
-      await FirebaseServiceV2.sendPushNotificationToRoles({
-        title: '¡Nuevo Pedido Recibido!',
-        body: `Pedido #${data.orderId.slice(-8).toUpperCase()} de ${data.clientName}\nTotal: RD$ ${data.total.toFixed(0)}`,
-        roles: ['business'],
-        businessId: data.businessId,
-        tag: 'new_order',
-      });
+      // await FirebaseServiceV2.sendPushNotificationToRoles({
+      //   title: '¡Nuevo Pedido Recibido!',
+      //   body: `Pedido #${data.orderId.slice(-8).toUpperCase()} de ${data.clientName}\nTotal: RD$ ${data.total.toFixed(0)}`,
+      //   roles: ['business'],
+      //   businessId: data.businessId,
+      //   tag: 'new_order',
+      // });
 
       // Send to all admins
-      await FirebaseServiceV2.sendPushNotificationToRoles({
-        title: `Nuevo Pedido - ${data.businessName}`,
-        body: `Cliente: ${data.clientName}\nTotal: RD$ ${data.total.toFixed(0)}\n#${data.orderId.slice(-8).toUpperCase()}`,
-        roles: ['admin'],
-        tag: 'new_order_admin',
-      });
+      // await FirebaseServiceV2.sendPushNotificationToRoles({
+      //   title: `Nuevo Pedido - ${data.businessName}`,
+      //   body: `Cliente: ${data.clientName}\nTotal: RD$ ${data.total.toFixed(0)}\n#${data.orderId.slice(-8).toUpperCase()}`,
+      //   roles: ['admin'],
+      //   tag: 'new_order_admin',
+      // });
 
       // Create in-app notifications
       await FirebaseServiceV2.createInAppNotificationsForTarget({
@@ -66,13 +70,13 @@ class OrderNotificationService {
       const message = statusMessages[newStatus] || `Estado del pedido actualizado: ${newStatus}`;
 
       // Send notification to client
-      await FirebaseServiceV2.sendPushNotificationToRoles({
-        title: `Actualización de Pedido #${data.orderId.slice(-8).toUpperCase()}`,
-        body: message,
-        roles: ['client'],
-        userId: data.clientId,
-        tag: 'order_status',
-      });
+      // await FirebaseServiceV2.sendPushNotificationToRoles({
+      //   title: `Actualización de Pedido #${data.orderId.slice(-8).toUpperCase()}`,
+      //   body: message,
+      //   roles: ['client'],
+      //   userId: data.clientId,
+      //   tag: 'order_status',
+      // });
 
       // Create in-app notification for client
       await FirebaseServiceV2.createInAppNotification({
@@ -84,23 +88,23 @@ class OrderNotificationService {
 
       // If order is ready, notify delivery drivers
       if (newStatus === 'ready') {
-        await FirebaseServiceV2.sendPushNotificationToRoles({
-          title: '¡Pedido Disponible para Entrega!',
-          body: `${data.businessName} - Pedido #${data.orderId.slice(-8).toUpperCase()}\nTotal: RD$ ${data.total.toFixed(0)}`,
-          roles: ['delivery'],
-          tag: 'order_ready',
-        });
+        // await FirebaseServiceV2.sendPushNotificationToRoles({
+        //   title: '¡Pedido Disponible para Entrega!',
+        //   body: `${data.businessName} - Pedido #${data.orderId.slice(-8).toUpperCase()}\nTotal: RD$ ${data.total.toFixed(0)}`,
+        //   roles: ['delivery'],
+        //   tag: 'order_ready',
+        // });
       }
 
       // If order is assigned to delivery, notify the specific driver
       if (newStatus === 'on_the_way' && data.deliveryId) {
-        await FirebaseServiceV2.sendPushNotificationToRoles({
-          title: 'Nuevo Pedido Asignado',
-          body: `Retirar en ${data.businessName}\nCliente: ${data.clientName}\nTotal: RD$ ${data.total.toFixed(0)}`,
-          roles: ['delivery'],
-          userId: data.deliveryId,
-          tag: 'order_assigned',
-        });
+        // await FirebaseServiceV2.sendPushNotificationToRoles({
+        //   title: 'Nuevo Pedido Asignado',
+        //   body: `Retirar en ${data.businessName}\nCliente: ${data.clientName}\nTotal: RD$ ${data.total.toFixed(0)}`,
+        //   roles: ['delivery'],
+        //   userId: data.deliveryId,
+        //   tag: 'order_assigned',
+        // });
       }
 
       console.log(`[OrderNotif] Status update notifications sent for order ${data.orderId} -> ${newStatus}`);
@@ -119,30 +123,30 @@ class OrderNotificationService {
         : `Pedido #${data.orderId.slice(-8).toUpperCase()} ha sido cancelado`;
 
       // Notify client
-      await FirebaseServiceV2.sendPushNotificationToRoles({
-        title: 'Pedido Cancelado',
-        body: `${body} - ${data.businessName}`,
-        roles: ['client'],
-        userId: data.clientId,
-        tag: 'order_cancelled',
-      });
+      // await FirebaseServiceV2.sendPushNotificationToRoles({
+      //   title: 'Pedido Cancelado',
+      //   body: `${body} - ${data.businessName}`,
+      //   roles: ['client'],
+      //   userId: data.clientId,
+      //   tag: 'order_cancelled',
+      // });
 
       // Notify business
-      await FirebaseServiceV2.sendPushNotificationToRoles({
-        title: 'Pedido Cancelado',
-        body: `Cliente: ${data.clientName}\n${body}`,
-        roles: ['business'],
-        businessId: data.businessId,
-        tag: 'order_cancelled',
-      });
+      // await FirebaseServiceV2.sendPushNotificationToRoles({
+      //   title: 'Pedido Cancelado',
+      //   body: `Cliente: ${data.clientName}\n${body}`,
+      //   roles: ['business'],
+      //   businessId: data.businessId,
+      //   tag: 'order_cancelled',
+      // });
 
       // Notify admin
-      await FirebaseServiceV2.sendPushNotificationToRoles({
-        title: `Pedido Cancelado - ${data.businessName}`,
-        body: `Cliente: ${data.clientName}\n${body}`,
-        roles: ['admin'],
-        tag: 'order_cancelled_admin',
-      });
+      // await FirebaseServiceV2.sendPushNotificationToRoles({
+      //   title: `Pedido Cancelado - ${data.businessName}`,
+      //   body: `Cliente: ${data.clientName}\n${body}`,
+      //   roles: ['admin'],
+      //   tag: 'order_cancelled_admin',
+      // });
 
       console.log(`[OrderNotif] Cancellation notifications sent for order ${data.orderId}`);
     } catch (error) {
