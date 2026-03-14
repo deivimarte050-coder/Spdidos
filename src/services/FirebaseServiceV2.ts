@@ -632,6 +632,57 @@ class FirebaseServiceV2 {
     }
   }
 
+  async sendPushNotificationToRoles(data: {
+    title: string;
+    body: string;
+    roles: Array<'admin' | 'business' | 'delivery' | 'client'>;
+    businessId?: string; // Optional: only send to specific business
+    userId?: string; // Optional: only send to specific user
+    tag?: string;
+  }): Promise<void> {
+    try {
+      let q = query(collection(db, COLLECTIONS.FCM_TOKENS));
+      
+      // Filter by roles
+      if (data.roles.length > 0) {
+        q = query(q, where('role', 'in', data.roles));
+      }
+      
+      // Filter by specific business if provided
+      if (data.businessId) {
+        q = query(q, where('businessId', '==', data.businessId));
+      }
+      
+      // Filter by specific user if provided
+      if (data.userId) {
+        q = query(q, where('userId', '==', data.userId));
+      }
+      
+      const tokensSnapshot = await getDocs(q);
+      const tokens = tokensSnapshot.docs.map(doc => doc.data().token).filter(Boolean);
+      
+      if (tokens.length === 0) {
+        console.log('[FCM] No tokens found for notification');
+        return;
+      }
+      
+      // Send via FCM API (this would typically be done via Cloud Functions)
+      // For now, we'll create a notification document that triggers a Cloud Function
+      await addDoc(collection(db, 'push_notifications'), {
+        title: data.title,
+        body: data.body,
+        tokens,
+        tag: data.tag || 'spdidos',
+        createdAt: Timestamp.now(),
+      });
+      
+      console.log(`[FCM] Push notification queued for ${tokens.length} devices`);
+    } catch (error) {
+      console.error('[FCM] Error sending push notification:', error);
+      throw error;
+    }
+  }
+
   async queueAdminNotification(data: {
     title: string;
     body: string;

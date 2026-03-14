@@ -46,6 +46,7 @@ import { LOGO_URL } from '../constants';
 import DataService, { Business, Order } from '../services/DataService';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import EventService from '../services/EventService'; // Importar EventService
+import OrderNotificationService from '../services/OrderNotificationService';
 import { User as AppUser } from '../types';
 import BusinessLocationPicker from '../components/BusinessLocationPicker';
 
@@ -309,18 +310,30 @@ const AdminView: React.FC = () => {
 
     setSendingNotification(true);
     try {
-      await FirebaseServiceV2.queueAdminNotification({
+      // Convert target to roles for push notifications
+      const targetRoles: Array<'admin' | 'business' | 'delivery' | 'client'> = 
+        notificationForm.target === 'clients' ? ['client'] :
+        notificationForm.target === 'businesses' ? ['business'] :
+        notificationForm.target === 'delivery' ? ['delivery'] :
+        notificationForm.target === 'both' ? ['client', 'business'] :
+        ['client', 'business', 'delivery']; // 'all'
+      
+      // Send role-based push notifications
+      await FirebaseServiceV2.sendPushNotificationToRoles({
         title,
         body,
-        target: notificationForm.target,
-        createdBy: user?.id,
+        roles: targetRoles,
+        tag: 'admin_broadcast',
       });
+      
+      // Also create in-app notifications
       await FirebaseServiceV2.createInAppNotificationsForTarget({
         title,
         body,
         target: notificationForm.target,
         createdBy: user?.id,
       });
+      
       alert('✅ Notificación enviada.');
       setNotificationForm((prev) => ({ ...prev, title: '', body: '' }));
     } catch (error: any) {

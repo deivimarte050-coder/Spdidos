@@ -4,6 +4,7 @@ import { Clock, MapPin, User, Phone, MessageCircle, CheckCircle2, Package, Truck
 import { Order } from '../types';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { soundService } from '../services/SoundService';
+import OrderNotificationService from '../services/OrderNotificationService';
 import { useAuth } from '../contexts/AuthContext';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -277,7 +278,28 @@ const BusinessOrders: React.FC = () => {
       if (status === 'preparing') {
         payload.preparingAt = new Date().toISOString();
       }
+      
+      // Get order details before updating
+      const order = orders.find(o => o.id === orderId);
+      if (!order) {
+        console.error('Order not found for status update');
+        return;
+      }
+      
       await FirebaseServiceV2.updateOrder(orderId, payload);
+      
+      // Send role-based notifications
+      await OrderNotificationService.notifyOrderStatusUpdate({
+        orderId: order.id,
+        businessId: order.businessId,
+        businessName: order.businessName,
+        clientId: order.clientId,
+        clientName: order.clientName,
+        total: order.total,
+        status: order.status,
+        deliveryId: order.deliveryId,
+      }, status);
+      
     } catch (err) {
       console.error('Error actualizando estado:', err);
     }

@@ -18,6 +18,7 @@ import FirebaseServiceV2, { HomeAnnouncement, PopupAnnouncement } from './servic
 import EventService from './services/EventService';
 import { soundService } from './services/SoundService';
 import { initFCMToken, listenFCMForeground } from './services/FCMService';
+import OrderNotificationService from './services/OrderNotificationService';
 import { LOGO_URL, SPM_CENTER } from './constants';
 
 type BeforeInstallPromptEvent = Event & {
@@ -1448,6 +1449,18 @@ function AppContent() {
     try {
       const acceptedAt = new Date().toISOString();
       await FirebaseServiceV2.updateOrder(order.id, { status: 'accepted', acceptedAt });
+      
+      // Send role-based notifications
+      await OrderNotificationService.notifyOrderStatusUpdate({
+        orderId: order.id,
+        businessId: order.businessId,
+        businessName: order.businessName,
+        clientId: order.clientId,
+        clientName: order.clientName,
+        total: order.total,
+        status: 'accepted',
+      }, 'accepted');
+      
       setAcceptedOrderSummary({ ...order, status: 'accepted', acceptedAt });
     }
     catch (err) { console.error('Error aceptando pedido:', err); }
@@ -1466,6 +1479,17 @@ function AppContent() {
         cancelledByClient: false,
         cancellationReason: 'Cancelado por negocio'
       });
+      
+      // Send role-based notifications
+      await OrderNotificationService.notifyOrderCancelled({
+        orderId: order.id,
+        businessId: order.businessId,
+        businessName: order.businessName,
+        clientId: order.clientId,
+        clientName: order.clientName,
+        total: order.total,
+        status: 'cancelled',
+      }, 'Cancelado por negocio');
     }
     catch (err) { console.error('Error rechazando pedido:', err); }
   };
@@ -2229,6 +2253,18 @@ function AppContent() {
       const saved = await FirebaseServiceV2.addOrder(orderData);
       // Save to client_locations collection too
       await FirebaseServiceV2.updateClientLocation(saved.id, gps.lat, gps.lng);
+      
+      // Send role-based push notifications
+      await OrderNotificationService.notifyNewOrder({
+        orderId: saved.id,
+        businessId: orderData.businessId,
+        businessName: orderData.businessName,
+        clientId: orderData.clientId,
+        clientName: orderData.clientName,
+        total: orderData.total,
+        status: orderData.status,
+      });
+      
       setActiveOrderId(saved.id);
       setView('tracking');
       setIsCartOpen(false);
