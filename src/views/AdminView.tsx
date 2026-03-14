@@ -210,8 +210,8 @@ const AdminView: React.FC = () => {
           }
         } catch (_) {}
 
-        // Browser notification
-        if ('Notification' in window && Notification.permission === 'granted') {
+        // Browser notification (admin only)
+        if ('Notification' in window && Notification.permission === 'granted' && user?.role === 'admin') {
           new Notification(`Nuevo Pedido - ${latest.businessName}`, {
             body: `Cliente: ${(latest as any).clientName || 'N/A'}\nTotal: RD$ ${latest.total?.toFixed(0)}\n#${latest.id?.slice(-8).toUpperCase()}`,
             icon: '/favicon.ico',

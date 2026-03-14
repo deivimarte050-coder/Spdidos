@@ -750,23 +750,7 @@ if ('Notification' in window && Notification.permission === 'default') {
 }
 
 // ─── Push notification helper ────────────────────────────────────────────────
-async function showPushNotification(title: string, body: string, tag = 'spdidos') {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  try {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title, {
-        body,
-        icon:               '/logo_high_resolution.png',
-        badge:              '/logo_high_resolution.png',
-        tag,
-        requireInteraction: true,
-      } as NotificationOptions & { vibrate: number[] } as NotificationOptions);
-      return;
-    }
-  } catch { /* ignore */ }
-  try { new Notification(title, { body, icon: '/logo_high_resolution.png', tag }); } catch { }
-}
+// Role-based notification function will be defined inside AppContent component
 
 // ─── Client Profile View ──────────────────────────────────────────────────────
 const ProfileView: React.FC<{ onViewChange: (v: any) => void }> = ({ onViewChange }) => {
@@ -1074,6 +1058,27 @@ const SupportChatView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 function AppContent() {
   const { user, logout, updateUser } = useAuth();
   const [view, setView] = useState<View>('home');
+
+  // ─── Role-based push notification helper ───────────────────────────────────────
+  const showPushNotificationForRole = async (title: string, body: string, allowedRoles: Array<'client' | 'business' | 'delivery' | 'admin'>, tag = 'spdidos') => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (!user?.role || !allowedRoles.includes(user.role as any)) return;
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification(title, {
+          body,
+          icon:               '/logo_high_resolution.png',
+          badge:              '/logo_high_resolution.png',
+          tag,
+          requireInteraction: true,
+        } as NotificationOptions & { vibrate: number[] } as NotificationOptions);
+        return;
+      }
+    } catch { /* ignore */ }
+    try { new Notification(title, { body, icon: '/logo_high_resolution.png', tag }); } catch { }
+  };
   const [menuOriginView, setMenuOriginView] = useState<View>('home');
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [activeMenuCategory, setActiveMenuCategory] = useState<string>('all');
@@ -1237,7 +1242,7 @@ function AppContent() {
     }, 1000 * 60 * 30);
 
     const unsubForeground = listenFCMForeground(({ title, body, tag }) => {
-      showPushNotification(title, body, tag);
+      showPushNotificationForRole(title, body, ['client', 'business', 'delivery', 'admin'], tag);
     });
 
     return () => {
@@ -1342,7 +1347,7 @@ function AppContent() {
           arrivedNotifiedIds.current.add(o.id);
           setArrivedOrderId(o.id);
           soundService.startRinging();
-          showPushNotification('¡Tu repartidor llegó! 🛵', 'Está en tu puerta esperando — abre la app para confirmar', 'arrived');
+          showPushNotificationForRole('¡Tu repartidor llegó! 🛵', 'Está en tu puerta esperando — abre la app para confirmar', ['client'], 'arrived');
         }
       });
     };
@@ -1403,7 +1408,7 @@ function AppContent() {
           bizShowingModal.current = true;
           setIncomingOrder(pending);
           soundService.startRinging();
-          showPushNotification('¡Nuevo Pedido! 🔔', `${pending.clientName} — RD$ ${pending.total?.toFixed(0)}`, 'new-order');
+          showPushNotificationForRole('¡Nuevo Pedido! 🔔', `${pending.clientName} — RD$ ${pending.total?.toFixed(0)}`, ['business'], 'new-order');
         }
       }
 
@@ -1420,9 +1425,10 @@ function AppContent() {
           bizCancelledNotifiedIds.current.add(newlyCancelled.id);
           setCancelledOrderNotice(newlyCancelled);
           soundService.startCancelledRinging();
-          showPushNotification(
+          showPushNotificationForRole(
             'Pedido cancelado por cliente ❌',
             `Lo siento, el cliente ${newlyCancelled.clientName} canceló el pedido`,
+            ['business'],
             'order-cancelled'
           );
         }
@@ -1509,7 +1515,7 @@ function AppContent() {
         const hasNew = available.some(o => !deliveryKnownReadyIds.current.has(o.id));
         if (hasNew && !myActive) {
           soundService.startRinging();
-          showPushNotification('¡Pedido disponible! 📦', 'Un negocio aceptó un pedido y está disponible para ti', 'ready-order');
+          showPushNotificationForRole('¡Pedido disponible! 📦', 'Un negocio aceptó un pedido y está disponible para ti', ['delivery'], 'ready-order');
         }
         if (available.length === 0)  soundService.stopRinging();
         available.forEach(o => deliveryKnownReadyIds.current.add(o.id));
