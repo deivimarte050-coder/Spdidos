@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onAdminNotificationCreated = exports.onOrderUpdate = exports.onNewOrder = exports.sharePreview = void 0;
+exports.uploadMenuImage = exports.onAdminNotificationCreated = exports.onOrderUpdate = exports.onNewOrder = exports.sharePreview = void 0;
 const admin = require("firebase-admin");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
@@ -19,8 +19,11 @@ async function getTokens(role, filters = {}) {
         .filter(Boolean)));
 }
 async function sendTo(tokens, title, body, tag) {
-    if (!tokens.length)
+    if (!tokens.length) {
+        console.log(`[NOTIFICATIONS] No tokens to send for tag: ${tag}`);
         return;
+    }
+    console.log(`[NOTIFICATIONS] Sending "${title}" to ${tokens.length} devices (tag: ${tag})`);
     const response = await messaging.sendEachForMulticast({
         tokens,
         notification: { title, body },
@@ -58,6 +61,9 @@ async function sendTo(tokens, title, body, tag) {
             link: '/',
         },
     });
+    const successCount = response.responses.filter(r => r.success).length;
+    const failureCount = response.responses.filter(r => !r.success).length;
+    console.log(`[NOTIFICATIONS] Results: ${successCount} success, ${failureCount} failures for tag: ${tag}`);
     const invalidTokens = response.responses
         .map((r, i) => ({ r, token: tokens[i] }))
         .filter(({ r }) => !r.success && (r.error?.code === 'messaging/registration-token-not-registered'
@@ -65,6 +71,7 @@ async function sendTo(tokens, title, body, tag) {
         .map(({ token }) => token);
     if (!invalidTokens.length)
         return;
+    console.log(`[NOTIFICATIONS] Cleaning ${invalidTokens.length} invalid tokens`);
     const batch = db.batch();
     const tokenSnapshots = await Promise.all(invalidTokens.map((token) => db.collection('fcm_tokens').where('token', '==', token).get()));
     tokenSnapshots.forEach((tokenSnap) => {
@@ -205,17 +212,18 @@ exports.onNewOrder = (0, firestore_1.onDocumentCreated)('orders/{orderId}', asyn
         getTokens('delivery'),
         clientId ? getTokens('client', { userId: clientId }) : Promise.resolve([]),
     ]);
-    // Deduplicate: each token only receives ONE notification (priority: client > business > delivery)
-    const usedTokens = new Set();
-    const clientTokens = rawClient.filter(t => { usedTokens.add(t); return true; });
-    const businessTokens = rawBusiness.filter(t => { if (usedTokens.has(t))
-        return false; usedTokens.add(t); return true; });
-    const deliveryTokens = rawDelivery.filter(t => { if (usedTokens.has(t))
-        return false; usedTokens.add(t); return true; });
+    // Remove duplicates completely - each user should only get ONE notification
+    const allTokens = new Set([...rawBusiness, ...rawDelivery, ...rawClient]);
+    const uniqueBusiness = rawBusiness.filter(t => allTokens.has(t));
+    const uniqueDelivery = rawDelivery.filter(t => allTokens.has(t) && !uniqueBusiness.includes(t));
+    const uniqueClient = rawClient.filter(t => allTokens.has(t) && !uniqueBusiness.includes(t) && !uniqueDelivery.includes(t));
     await Promise.all([
-        sendTo(businessTokens, '¡Nuevo Pedido! 🔔', `${order['clientName']} — RD$ ${Number(order['total'] ?? 0).toFixed(0)}`, 'new-order'),
-        sendTo(deliveryTokens, '¡Nuevo Pedido Disponible! 🛵', `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`, 'new-order-delivery'),
-        sendTo(clientTokens, 'Pedido recibido ✅', `${String(order['businessName'] || 'El negocio')} recibió tu pedido.`, 'client-order-received'),
+        // Solo notificar al negocio del pedido
+        sendTo(uniqueBusiness, '¡Nuevo Pedido! 🔔', `${order['clientName']} — RD$ ${Number(order['total'] ?? 0).toFixed(0)}`, 'business-new-order'),
+        // Solo notificar a repartidores disponibles
+        sendTo(uniqueDelivery, '¡Nuevo Pedido Disponible! 🛵', `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`, 'delivery-new-order'),
+        // Solo notificar al cliente que hizo el pedido
+        sendTo(uniqueClient, 'Pedido recibido ✅', `${String(order['businessName'] || 'El negocio')} recibió tu pedido.`, 'client-order-received'),
     ]);
 });
 // ─── Trigger 2: status changes → notify relevant users ───────────────────────
@@ -228,16 +236,17 @@ exports.onOrderUpdate = (0, firestore_1.onDocumentUpdated)('orders/{orderId}', a
         return;
     const status = String(after['status'] || '');
     const clientId = String(after['clientId'] || '');
-    // Get client tokens to exclude them from non-client notifications
-    const clientTokenSet = new Set(clientId ? await getTokens('client', { userId: clientId }) : []);
-    // Pedido listo → avisar SOLO a repartidores (excluir tokens del cliente)
+    // Pedido listo → avisar SOLO a repartidores (excluir completamente al cliente)
     if (status === 'ready') {
         const allDelivery = await getTokens('delivery');
-        const deliveryOnly = allDelivery.filter(t => !clientTokenSet.has(t));
-        await sendTo(deliveryOnly, '¡Pedido disponible! 📦', 'Hay un nuevo pedido listo para recoger', 'ready-order');
+        const clientTokens = clientId ? await getTokens('client', { userId: clientId }) : [];
+        const deliveryOnly = allDelivery.filter(t => !clientTokens.includes(t));
+        await sendTo(deliveryOnly, '¡Pedido disponible! 📦', 'Hay un nuevo pedido listo para recoger', 'delivery-ready-order');
         return;
     }
-    // Notifications that go ONLY to the client
+    // Solo enviar notificaciones al cliente del pedido
+    if (!clientId)
+        return;
     const clientStatusMessages = {
         accepted: {
             title: 'Pedido aceptado ✅',
@@ -252,7 +261,7 @@ exports.onOrderUpdate = (0, firestore_1.onDocumentUpdated)('orders/{orderId}', a
         picked_up: {
             title: 'Pedido en camino 🛵',
             body: 'Tu repartidor ya recogió el pedido y va hacia ti.',
-            tag: 'client-on-the-way',
+            tag: 'client-picked-up',
         },
         on_the_way: {
             title: 'Pedido en camino 🛵',
@@ -262,7 +271,7 @@ exports.onOrderUpdate = (0, firestore_1.onDocumentUpdated)('orders/{orderId}', a
         arrived: {
             title: '¡Tu repartidor llegó! 🛵',
             body: 'Está en tu puerta esperando — abre la app para confirmar',
-            tag: 'arrived',
+            tag: 'client-arrived',
         },
         delivered: {
             title: 'Pedido entregado 🎉',
@@ -270,11 +279,14 @@ exports.onOrderUpdate = (0, firestore_1.onDocumentUpdated)('orders/{orderId}', a
             tag: 'client-delivered',
         },
     };
-    if (!clientId || !clientStatusMessages[status])
-        return;
-    const clientTokens = Array.from(clientTokenSet);
     const message = clientStatusMessages[status];
-    await sendTo(clientTokens, message.title, message.body, message.tag);
+    if (!message)
+        return;
+    // Solo notificar al cliente específico del pedido
+    const clientTokens = await getTokens('client', { userId: clientId });
+    if (clientTokens.length > 0) {
+        await sendTo(clientTokens, message.title, message.body, message.tag);
+    }
 });
 // ─── Trigger 3: admin broadcast notifications ───────────────────────────────
 exports.onAdminNotificationCreated = (0, firestore_1.onDocumentCreated)('admin_notifications/{notificationId}', async (event) => {
@@ -327,6 +339,75 @@ exports.onAdminNotificationCreated = (0, firestore_1.onDocumentCreated)('admin_n
             }, { merge: true });
         }
         throw error;
+    }
+});
+// ─── Image Upload Proxy - Avoids CORS issues ──────────────────────────────────
+exports.uploadMenuImage = (0, https_1.onRequest)(async (req, res) => {
+    try {
+        // Enable CORS
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        if (req.method === 'OPTIONS') {
+            res.status(204).send('');
+            return;
+        }
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Method not allowed' });
+            return;
+        }
+        const { imageData, businessId, itemId } = req.body;
+        if (!imageData || !businessId || !itemId) {
+            res.status(400).json({ error: 'Missing required fields: imageData, businessId, itemId' });
+            return;
+        }
+        const storage = admin.storage();
+        const bucket = storage.bucket('spdidos-8edda.appspot.com');
+        // Parse data URL
+        let buffer;
+        let mimeType = 'image/jpeg';
+        if (imageData.startsWith('data:')) {
+            const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+            if (!matches) {
+                res.status(400).json({ error: 'Invalid base64 data URL format' });
+                return;
+            }
+            mimeType = matches[1];
+            buffer = Buffer.from(matches[2], 'base64');
+        }
+        else if (imageData.startsWith('http')) {
+            // Already a URL, return as-is
+            res.json({ url: imageData });
+            return;
+        }
+        else {
+            res.status(400).json({ error: 'Image must be a data URL or HTTP URL' });
+            return;
+        }
+        const ext = mimeType.split('/')[1] || 'jpg';
+        const fileName = `${itemId}_${Date.now()}.${ext}`;
+        const filePath = `businesses/${businessId}/menu-items/${fileName}`;
+        const file = bucket.file(filePath);
+        // Upload with proper metadata
+        await file.save(buffer, {
+            metadata: {
+                contentType: mimeType,
+                cacheControl: 'public, max-age=31536000',
+            },
+        });
+        // Make file public
+        await file.makePublic();
+        // Get public URL
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+        console.log(`[UPLOAD] Image uploaded successfully: ${publicUrl}`);
+        res.json({ url: publicUrl });
+    }
+    catch (error) {
+        console.error('[UPLOAD] Error:', error);
+        res.status(500).json({
+            error: 'Failed to upload image',
+            details: error?.message || 'Unknown error',
+        });
     }
 });
 //# sourceMappingURL=index.js.map

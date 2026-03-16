@@ -401,3 +401,81 @@ export const onAdminNotificationCreated = onDocumentCreated('admin_notifications
     throw error;
   }
 });
+
+// ─── Image Upload Proxy - Avoids CORS issues ──────────────────────────────────
+export const uploadMenuImage = onRequest(async (req, res) => {
+  try {
+    // Enable CORS
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+      res.status(204).send('');
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
+
+    const { imageData, businessId, itemId } = req.body;
+    if (!imageData || !businessId || !itemId) {
+      res.status(400).json({ error: 'Missing required fields: imageData, businessId, itemId' });
+      return;
+    }
+
+    const storage = admin.storage();
+    const bucket = storage.bucket('spdidos-8edda.appspot.com');
+
+    // Parse data URL
+    let buffer: Buffer;
+    let mimeType = 'image/jpeg';
+
+    if (imageData.startsWith('data:')) {
+      const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        res.status(400).json({ error: 'Invalid base64 data URL format' });
+        return;
+      }
+      mimeType = matches[1];
+      buffer = Buffer.from(matches[2], 'base64');
+    } else if (imageData.startsWith('http')) {
+      // Already a URL, return as-is
+      res.json({ url: imageData });
+      return;
+    } else {
+      res.status(400).json({ error: 'Image must be a data URL or HTTP URL' });
+      return;
+    }
+
+    const ext = mimeType.split('/')[1] || 'jpg';
+    const fileName = `${itemId}_${Date.now()}.${ext}`;
+    const filePath = `businesses/${businessId}/menu-items/${fileName}`;
+    const file = bucket.file(filePath);
+
+    // Upload with proper metadata
+    await file.save(buffer, {
+      metadata: {
+        contentType: mimeType,
+        cacheControl: 'public, max-age=31536000',
+      },
+    });
+
+    // Make file public
+    await file.makePublic();
+
+    // Get public URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+
+    console.log(`[UPLOAD] Image uploaded successfully: ${publicUrl}`);
+    res.json({ url: publicUrl });
+  } catch (error: any) {
+    console.error('[UPLOAD] Error:', error);
+    res.status(500).json({
+      error: 'Failed to upload image',
+      details: error?.message || 'Unknown error',
+    });
+  }
+});

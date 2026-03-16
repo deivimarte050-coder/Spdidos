@@ -151,44 +151,56 @@ const MenuManager: React.FC = () => {
     return sizeInBytes < 900000; // Leave some margin under 1MB limit
   };
 
-  // Upload image to Firebase Storage and return URL
+  // Upload image to Firebase Storage via Cloud Function (avoids CORS issues)
   const uploadImageToStorage = async (imageValue: string, businessId: string, itemId: string): Promise<string> => {
     if (!imageValue) return '';
     if (imageValue.startsWith('https://firebasestorage.googleapis.com/')) return imageValue;
-    if (!imageValue.startsWith('data:image/')) return imageValue;
+    if (imageValue.startsWith('https://storage.googleapis.com/')) return imageValue;
 
-    const mimeMatch = imageValue.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
-    const extensionByMime: Record<string, string> = {
-      'image/jpeg': 'jpg',
-      'image/jpg': 'jpg',
-      'image/png': 'png',
-      'image/webp': 'webp',
-      'image/gif': 'gif',
-      'image/bmp': 'bmp',
-      'image/svg+xml': 'svg',
-      'image/heic': 'heic',
-      'image/heif': 'heif',
-      'image/avif': 'avif',
-    };
-    const ext = extensionByMime[mimeMatch?.[1] || ''] || 'jpg';
-    const filePath = `businesses/${businessId}/menu-items/${itemId}_${Date.now()}.${ext}`;
-    const storageRef = ref(storageObj, filePath);
-    await withTimeout(uploadString(storageRef, imageValue, 'data_url'), 20000, 'Tiempo de espera agotado subiendo imagen.');
-    return withTimeout(getDownloadURL(storageRef), 10000, 'Tiempo de espera agotado obteniendo URL de imagen.');
+    try {
+      const response = await withTimeout(
+        fetch('https://us-central1-spdidos-8edda.cloudfunctions.net/uploadMenuImage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageData: imageValue,
+            businessId,
+            itemId,
+          }),
+        }),
+        20000,
+        'Tiempo de espera agotado subiendo imagen.'
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error || 'Upload failed');
+      }
+
+      const { url } = await response.json();
+      return url;
+    } catch (error: any) {
+      console.error('[MenuManager] Upload error:', error);
+      throw new Error(`Error subiendo imagen: ${error.message}`);
+    }
   };
 
   const uploadFileToStorage = async (file: File, businessId: string, itemId: string): Promise<string> => {
-    const allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg', 'heic', 'heif', 'avif'];
-    const inputExt = (file.name.split('.').pop() || '').toLowerCase();
-    const ext = allowed.includes(inputExt) ? inputExt : 'jpg';
-    const filePath = `businesses/${businessId}/menu-items/${itemId}_${Date.now()}.${ext}`;
-    const storageRef = ref(storageObj, filePath);
-    await withTimeout(
-      uploadBytes(storageRef, file, { contentType: file.type || `image/${ext}` }),
-      20000,
-      'Tiempo de espera agotado subiendo archivo de imagen.'
-    );
-    return withTimeout(getDownloadURL(storageRef), 10000, 'Tiempo de espera agotado obteniendo URL de imagen.');
+    // Convert file to base64 data URL
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const dataUrl = reader.result as string;
+          const url = await uploadImageToStorage(dataUrl, businessId, itemId);
+          resolve(url);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
   };
 
   // Guardar menú directo a Firestore (sin pasar por service layer)
