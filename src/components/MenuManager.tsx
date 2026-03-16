@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Edit2, Trash2, Upload, Save, X, Eye, EyeOff } from 'lucide-react';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { ref, uploadString, getDownloadURL, uploadBytes } from 'firebase/storage';
 import { db, storage as storageObj } from '../firebase/config';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { useAuth } from '../contexts/AuthContext';
@@ -60,6 +60,30 @@ const MenuManager: React.FC = () => {
     (choiceOptions || [])
       .filter((option) => option.label.trim() && Number.isFinite(option.price) && option.price > 0)
       .map((option) => ({ label: option.label.trim(), price: option.price, available: option.available !== false }));
+
+  const withTimeout = async <T,>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const ensureBusinessId = async (): Promise<string> => {
+    if (businessIdRef.current) return businessIdRef.current;
+    if (!user?.email) throw new Error('No hay usuario de negocio autenticado.');
+    const businesses = await FirebaseServiceV2.getBusinesses();
+    const business = businesses.find((b) => b.email === user.email);
+    if (!business?.id) throw new Error(`No se encontró tu negocio (email: ${user.email})`);
+    businessIdRef.current = business.id;
+    return business.id;
+  };
   // Cargar menú del negocio actual desde Firebase
   useEffect(() => {
     const loadMenu = async () => {
@@ -128,26 +152,43 @@ const MenuManager: React.FC = () => {
   };
 
   // Upload image to Firebase Storage and return URL
-  const uploadImageToStorage = async (dataUrl: string, businessId: string, itemId: string): Promise<string> => {
-    try {
-      // Si ya es una URL de Storage, no hacer nada
-      if (dataUrl.startsWith('https://firebasestorage.googleapis.com/')) {
-        return dataUrl;
-      }
-      
-      // Si es base64, subirla a Storage
-      if (dataUrl.startsWith('data:image/')) {
-        const filePath = `businesses/${businessId}/menu-items/${itemId}_${Date.now()}.jpg`;
-        const storageRef = ref(storageObj, filePath);
-        await uploadString(storageRef, dataUrl, 'data_url');
-        return await getDownloadURL(storageRef);
-      }
-      
-      return dataUrl;
-    } catch (error) {
-      console.error('Error uploading image to storage:', error);
-      return ''; // Return empty string on error
-    }
+  const uploadImageToStorage = async (imageValue: string, businessId: string, itemId: string): Promise<string> => {
+    if (!imageValue) return '';
+    if (imageValue.startsWith('https://firebasestorage.googleapis.com/')) return imageValue;
+    if (!imageValue.startsWith('data:image/')) return imageValue;
+
+    const mimeMatch = imageValue.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+    const extensionByMime: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+      'image/bmp': 'bmp',
+      'image/svg+xml': 'svg',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+      'image/avif': 'avif',
+    };
+    const ext = extensionByMime[mimeMatch?.[1] || ''] || 'jpg';
+    const filePath = `businesses/${businessId}/menu-items/${itemId}_${Date.now()}.${ext}`;
+    const storageRef = ref(storageObj, filePath);
+    await withTimeout(uploadString(storageRef, imageValue, 'data_url'), 20000, 'Tiempo de espera agotado subiendo imagen.');
+    return withTimeout(getDownloadURL(storageRef), 10000, 'Tiempo de espera agotado obteniendo URL de imagen.');
+  };
+
+  const uploadFileToStorage = async (file: File, businessId: string, itemId: string): Promise<string> => {
+    const allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg', 'heic', 'heif', 'avif'];
+    const inputExt = (file.name.split('.').pop() || '').toLowerCase();
+    const ext = allowed.includes(inputExt) ? inputExt : 'jpg';
+    const filePath = `businesses/${businessId}/menu-items/${itemId}_${Date.now()}.${ext}`;
+    const storageRef = ref(storageObj, filePath);
+    await withTimeout(
+      uploadBytes(storageRef, file, { contentType: file.type || `image/${ext}` }),
+      20000,
+      'Tiempo de espera agotado subiendo archivo de imagen.'
+    );
+    return withTimeout(getDownloadURL(storageRef), 10000, 'Tiempo de espera agotado obteniendo URL de imagen.');
   };
 
   // Guardar menú directo a Firestore (sin pasar por service layer)
@@ -159,16 +200,7 @@ const MenuManager: React.FC = () => {
     setSaveError('');
 
     try {
-      // Si no tenemos el businessId, buscarlo
-      if (!businessIdRef.current) {
-        const businesses = await FirebaseServiceV2.getBusinesses();
-        const business = businesses.find(b => b.email === user.email);
-        if (business) {
-          businessIdRef.current = business.id;
-        } else {
-          throw new Error('No se encontró tu negocio (email: ' + user.email + ')');
-        }
-      }
+      const businessId = await ensureBusinessId();
 
       // Construir menú limpio con SOLO strings, numbers y booleans
       const cleanMenu: any[] = [];
@@ -184,9 +216,9 @@ const MenuManager: React.FC = () => {
         // Optimizar imagen: subirla a Storage si es base64
         let optimizedImage = '';
         if (item.image) {
-          optimizedImage = await uploadImageToStorage(item.image, businessIdRef.current, plain.id);
+          optimizedImage = await uploadImageToStorage(item.image, businessId, plain.id);
         }
-        plain.image = optimizedImage;
+        plain.image = optimizedImage || item.image || '';
         
         plain.available = !!(item.isAvailable !== false && item.isActive !== false);
         const choiceOptions = sanitizeChoiceOptions(item.choiceOptions);
@@ -206,7 +238,7 @@ const MenuManager: React.FC = () => {
         throw new Error('El menú es demasiado grande para Firestore. Considera reducir el número de productos o eliminar imágenes grandes.');
       }
 
-      const businessRef = doc(db, 'businesses', businessIdRef.current);
+      const businessRef = doc(db, 'businesses', businessId);
 
       // Paso 1: Verificar que Firestore funciona con datos simples
       try {
@@ -242,19 +274,30 @@ const MenuManager: React.FC = () => {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, item?: MenuItem) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, item?: MenuItem) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const imageUrl = reader.result as string;
-        if (item) {
-          setEditingItem({ ...item, image: imageUrl });
-        } else {
-          setNewItem({ ...newItem, image: imageUrl });
-        }
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    try {
+      if (!user || user.role !== 'business') throw new Error('Solo negocios pueden subir imágenes de menú.');
+      const businessId = await ensureBusinessId();
+      const targetId = item?.id || `new-${Date.now()}`;
+      const imageUrl = await uploadFileToStorage(file, businessId, targetId);
+      if (item) {
+        setEditingItem({ ...item, image: imageUrl });
+      } else {
+        setNewItem((prev) => ({ ...prev, image: imageUrl }));
+      }
+    } catch (error) {
+      console.error('❌ [MenuManager] Error subiendo imagen:', error);
+      alert('No se pudo subir la imagen. Intenta con otra imagen o vuelve a intentar.');
+      if (item) {
+        setEditingItem({ ...item, image: '' });
+      } else {
+        setNewItem((prev) => ({ ...prev, image: '' }));
+      }
+    } finally {
+      e.target.value = '';
     }
   };
 

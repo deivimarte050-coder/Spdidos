@@ -24,7 +24,13 @@ async function getTokens(
 }
 
 async function sendTo(tokens: string[], title: string, body: string, tag: string) {
-  if (!tokens.length) return;
+  if (!tokens.length) {
+    console.log(`[NOTIFICATIONS] No tokens to send for tag: ${tag}`);
+    return;
+  }
+  
+  console.log(`[NOTIFICATIONS] Sending "${title}" to ${tokens.length} devices (tag: ${tag})`);
+  
   const response = await messaging.sendEachForMulticast({
     tokens,
     notification: { title, body },
@@ -63,6 +69,11 @@ async function sendTo(tokens: string[], title: string, body: string, tag: string
     },
   });
 
+  const successCount = response.responses.filter(r => r.success).length;
+  const failureCount = response.responses.filter(r => !r.success).length;
+  
+  console.log(`[NOTIFICATIONS] Results: ${successCount} success, ${failureCount} failures for tag: ${tag}`);
+
   const invalidTokens = response.responses
     .map((r, i) => ({ r, token: tokens[i] }))
     .filter(({ r }) => !r.success && (
@@ -73,6 +84,7 @@ async function sendTo(tokens: string[], title: string, body: string, tag: string
 
   if (!invalidTokens.length) return;
 
+  console.log(`[NOTIFICATIONS] Cleaning ${invalidTokens.length} invalid tokens`);
   const batch = db.batch();
   const tokenSnapshots = await Promise.all(
     invalidTokens.map((token) => db.collection('fcm_tokens').where('token', '==', token).get())
@@ -227,27 +239,30 @@ export const onNewOrder = onDocumentCreated('orders/{orderId}', async (event) =>
     clientId ? getTokens('client', { userId: clientId }) : Promise.resolve([]),
   ]);
 
-  // Deduplicate: each token only receives ONE notification (priority: client > business > delivery)
-  const usedTokens = new Set<string>();
-  const clientTokens = rawClient.filter(t => { usedTokens.add(t); return true; });
-  const businessTokens = rawBusiness.filter(t => { if (usedTokens.has(t)) return false; usedTokens.add(t); return true; });
-  const deliveryTokens = rawDelivery.filter(t => { if (usedTokens.has(t)) return false; usedTokens.add(t); return true; });
+  // Remove duplicates completely - each user should only get ONE notification
+  const allTokens = new Set([...rawBusiness, ...rawDelivery, ...rawClient]);
+  const uniqueBusiness = rawBusiness.filter(t => allTokens.has(t));
+  const uniqueDelivery = rawDelivery.filter(t => allTokens.has(t) && !uniqueBusiness.includes(t));
+  const uniqueClient = rawClient.filter(t => allTokens.has(t) && !uniqueBusiness.includes(t) && !uniqueDelivery.includes(t));
 
   await Promise.all([
+    // Solo notificar al negocio del pedido
     sendTo(
-      businessTokens,
+      uniqueBusiness,
       '¡Nuevo Pedido! 🔔',
       `${order['clientName']} — RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
-      'new-order'
+      'business-new-order'
     ),
+    // Solo notificar a repartidores disponibles
     sendTo(
-      deliveryTokens,
+      uniqueDelivery,
       '¡Nuevo Pedido Disponible! 🛵',
       `${String(order['businessName'] || 'Negocio')} · RD$ ${Number(order['total'] ?? 0).toFixed(0)}`,
-      'new-order-delivery'
+      'delivery-new-order'
     ),
+    // Solo notificar al cliente que hizo el pedido
     sendTo(
-      clientTokens,
+      uniqueClient,
       'Pedido recibido ✅',
       `${String(order['businessName'] || 'El negocio')} recibió tu pedido.`,
       'client-order-received'
@@ -265,25 +280,24 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
   const status = String(after['status'] || '');
   const clientId = String(after['clientId'] || '');
 
-  // Get client tokens to exclude them from non-client notifications
-  const clientTokenSet = new Set(
-    clientId ? await getTokens('client', { userId: clientId }) : []
-  );
-
-  // Pedido listo → avisar SOLO a repartidores (excluir tokens del cliente)
+  // Pedido listo → avisar SOLO a repartidores (excluir completamente al cliente)
   if (status === 'ready') {
     const allDelivery = await getTokens('delivery');
-    const deliveryOnly = allDelivery.filter(t => !clientTokenSet.has(t));
+    const clientTokens = clientId ? await getTokens('client', { userId: clientId }) : [];
+    const deliveryOnly = allDelivery.filter(t => !clientTokens.includes(t));
+    
     await sendTo(
       deliveryOnly,
       '¡Pedido disponible! 📦',
       'Hay un nuevo pedido listo para recoger',
-      'ready-order'
+      'delivery-ready-order'
     );
     return;
   }
 
-  // Notifications that go ONLY to the client
+  // Solo enviar notificaciones al cliente del pedido
+  if (!clientId) return;
+  
   const clientStatusMessages: Record<string, { title: string; body: string; tag: string }> = {
     accepted: {
       title: 'Pedido aceptado ✅',
@@ -298,7 +312,7 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
     picked_up: {
       title: 'Pedido en camino 🛵',
       body: 'Tu repartidor ya recogió el pedido y va hacia ti.',
-      tag: 'client-on-the-way',
+      tag: 'client-picked-up',
     },
     on_the_way: {
       title: 'Pedido en camino 🛵',
@@ -308,7 +322,7 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
     arrived: {
       title: '¡Tu repartidor llegó! 🛵',
       body: 'Está en tu puerta esperando — abre la app para confirmar',
-      tag: 'arrived',
+      tag: 'client-arrived',
     },
     delivered: {
       title: 'Pedido entregado 🎉',
@@ -317,16 +331,19 @@ export const onOrderUpdate = onDocumentUpdated('orders/{orderId}', async (event)
     },
   };
 
-  if (!clientId || !clientStatusMessages[status]) return;
-
-  const clientTokens = Array.from(clientTokenSet);
   const message = clientStatusMessages[status];
-  await sendTo(
-    clientTokens,
-    message.title,
-    message.body,
-    message.tag
-  );
+  if (!message) return;
+
+  // Solo notificar al cliente específico del pedido
+  const clientTokens = await getTokens('client', { userId: clientId });
+  if (clientTokens.length > 0) {
+    await sendTo(
+      clientTokens,
+      message.title,
+      message.body,
+      message.tag
+    );
+  }
 });
 
 // ─── Trigger 3: admin broadcast notifications ───────────────────────────────
