@@ -397,8 +397,9 @@ exports.uploadMenuImage = (0, https_1.onRequest)(async (req, res) => {
         });
         // Make file public
         await file.makePublic();
-        // Get public URL
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+        // Get public URL - usando Google Cloud Storage format correcto
+        const bucketName = 'spdidos-8edda.appspot.com';
+        const publicUrl = `https://storage.googleapis.com/${bucketName}/${filePath}`;
         console.log(`[UPLOAD] Image uploaded successfully: ${publicUrl}`);
         res.json({ url: publicUrl });
     }
