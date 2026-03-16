@@ -427,7 +427,7 @@ export const uploadMenuImage = onRequest(async (req, res) => {
     }
 
     const storage = admin.storage();
-    const bucket = storage.bucket('spdidos-8edda.appspot.com');
+    const bucket = storage.bucket();
 
     // Parse data URL
     let buffer: Buffer;
@@ -466,9 +466,8 @@ export const uploadMenuImage = onRequest(async (req, res) => {
     // Make file public
     await file.makePublic();
 
-    // Get public URL - usando Google Cloud Storage format correcto
-    const bucketName = 'spdidos-8edda.appspot.com';
-    const publicUrl = `https://storage.googleapis.com/${bucketName}/${filePath}`;
+    // Get public URL
+    const publicUrl = file.publicUrl();
 
     console.log(`[UPLOAD] Image uploaded successfully: ${publicUrl}`);
     res.json({ url: publicUrl });
