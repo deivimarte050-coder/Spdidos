@@ -6,6 +6,15 @@
       "ignore": ["node_modules", ".git", "firebase-debug.log"]
     }
   ],
+  "firestore": {
+    "rules": "firebase/firestore.rules"
+  },
+  "storage": [
+    {
+      "bucket": "spdidos-8edda.appspot.com",
+      "rules": "firebase/storage.rules"
+    }
+  ],
   "hosting": {
     "public": "dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],

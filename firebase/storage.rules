@@ -1,0 +1,21 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow read access to all authenticated users
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+    }
+    
+    // Allow write/delete for business users uploading to their own business folder
+    match /businesses/{businessId}/{allPaths=**} {
+      allow write, delete: if request.auth != null && 
+                             request.auth.token.email_verified == true;
+    }
+    
+    // Allow public read for menu items
+    match /businesses/{businessId}/menu-items/{allPaths=**} {
+      allow read;
+      allow write, delete: if request.auth != null;
+    }
+  }
+}
