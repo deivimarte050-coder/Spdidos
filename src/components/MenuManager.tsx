@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Edit2, Trash2, Upload, Save, X, Eye, EyeOff } from 'lucide-react';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { db, storage as storageObj } from '../firebase/config';
 import FirebaseServiceV2 from '../services/FirebaseServiceV2';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -102,6 +103,53 @@ const MenuManager: React.FC = () => {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Compress menu data to stay within Firestore limits
+  const compressMenuData = (menu: any[]): any[] => {
+    return menu.map(item => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      category: item.category,
+      image: item.image, // Should be URL, not base64
+      available: item.available,
+      optionGroupLabel: item.optionGroupLabel,
+      choiceOptions: item.choiceOptions,
+      drinkSizes: item.drinkSizes
+    }));
+  };
+
+  // Check if menu data is too large
+  const checkMenuSize = (menu: any[]): boolean => {
+    const jsonString = JSON.stringify(menu);
+    const sizeInBytes = new Blob([jsonString]).size;
+    console.log(`[MenuManager] Menu size: ${sizeInBytes} bytes (${(sizeInBytes / 1024 / 1024).toFixed(2)} MB)`);
+    return sizeInBytes < 900000; // Leave some margin under 1MB limit
+  };
+
+  // Upload image to Firebase Storage and return URL
+  const uploadImageToStorage = async (dataUrl: string, businessId: string, itemId: string): Promise<string> => {
+    try {
+      // Si ya es una URL de Storage, no hacer nada
+      if (dataUrl.startsWith('https://firebasestorage.googleapis.com/')) {
+        return dataUrl;
+      }
+      
+      // Si es base64, subirla a Storage
+      if (dataUrl.startsWith('data:image/')) {
+        const filePath = `businesses/${businessId}/menu-items/${itemId}_${Date.now()}.jpg`;
+        const storageRef = ref(storageObj, filePath);
+        await uploadString(storageRef, dataUrl, 'data_url');
+        return await getDownloadURL(storageRef);
+      }
+      
+      return dataUrl;
+    } catch (error) {
+      console.error('Error uploading image to storage:', error);
+      return ''; // Return empty string on error
+    }
+  };
+
   // Guardar menú directo a Firestore (sin pasar por service layer)
   const saveMenuToFirebase = async (updatedMenu: MenuItem[]) => {
     if (!user || user.role !== 'business') return;
@@ -132,7 +180,14 @@ const MenuManager: React.FC = () => {
         plain.description = '' + (item.description || '');
         plain.price = +(item.price) || 0;
         plain.category = '' + (item.category || '');
-        plain.image = '' + (item.image || '');
+        
+        // Optimizar imagen: subirla a Storage si es base64
+        let optimizedImage = '';
+        if (item.image) {
+          optimizedImage = await uploadImageToStorage(item.image, businessIdRef.current, plain.id);
+        }
+        plain.image = optimizedImage;
+        
         plain.available = !!(item.isAvailable !== false && item.isActive !== false);
         const choiceOptions = sanitizeChoiceOptions(item.choiceOptions);
         plain.optionGroupLabel = String(item.optionGroupLabel || (isDrinkCategory(item.category) ? 'Tamaño' : 'Sabor'));
@@ -143,6 +198,12 @@ const MenuManager: React.FC = () => {
           available: option.available,
         }));
         cleanMenu.push(plain);
+      }
+
+      // Comprimir y verificar tamaño del menú
+      const compressedMenu = compressMenuData(cleanMenu);
+      if (!checkMenuSize(compressedMenu)) {
+        throw new Error('El menú es demasiado grande para Firestore. Considera reducir el número de productos o eliminar imágenes grandes.');
       }
 
       const businessRef = doc(db, 'businesses', businessIdRef.current);
@@ -156,11 +217,11 @@ const MenuManager: React.FC = () => {
 
       // Paso 2: Escribir el menú limpio
       try {
-        await updateDoc(businessRef, { menu: cleanMenu });
+        await updateDoc(businessRef, { menu: compressedMenu });
       } catch (menuErr: any) {
         // Si falla, intentar con JSON roundtrip
         try {
-          const jsonClean = JSON.parse(JSON.stringify(cleanMenu));
+          const jsonClean = JSON.parse(JSON.stringify(compressedMenu));
           await updateDoc(businessRef, { menu: jsonClean });
         } catch (menuErr2: any) {
           throw new Error('PASO2_FALLO: ' + (menuErr?.message || menuErr) + ' | JSON: ' + (menuErr2?.message || menuErr2));
