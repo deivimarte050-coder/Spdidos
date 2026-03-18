@@ -60,6 +60,70 @@ const getClientPaymentMethodLabel = (paymentMethod?: string) => {
   return 'Efectivo';
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── MAP COMPONENTS FOR REAL-TIME DELIVERY TRACKING ─────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Auto-follow delivery person on map
+const MapFollower: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom(), { animate: true, duration: 1 });
+  }, [center[0], center[1]]);
+  return null;
+};
+
+// Draw route between delivery person and client using OSRM
+const RoutePolylineLayer: React.FC<{
+  from: [number, number];
+  to: [number, number];
+}> = ({ from, to }) => {
+  const map = useMap();
+  const layersRef = useRef<L.Layer[]>([]);
+
+  const clearLayers = () => {
+    layersRef.current.forEach(l => { try { map.removeLayer(l); } catch {} });
+    layersRef.current = [];
+  };
+
+  useEffect(() => {
+    const color = '#4f46e5';
+    const glow = '#6b21a8';
+    const w = 5;
+    let cancelled = false;
+
+    const draw = async () => {
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (cancelled || data.code !== 'Ok' || !data.routes?.[0]) throw new Error('no route');
+
+        const route = data.routes[0];
+        const coords: [number, number][] = route.geometry.coordinates.map(
+          ([lng, lat]: number[]) => [lat, lng] as [number, number]
+        );
+        clearLayers();
+        layersRef.current.push(
+          L.polyline(coords, { color: glow, weight: w + 6, opacity: 0.18 }).addTo(map),
+          L.polyline(coords, { color, weight: w, opacity: 1 }).addTo(map)
+        );
+      } catch {
+        if (cancelled) return;
+        clearLayers();
+        layersRef.current.push(
+          L.polyline([from, to], { color, weight: w, opacity: 0.6, dashArray: '10,7' }).addTo(map)
+        );
+      }
+    };
+
+    draw();
+    return () => { cancelled = true; clearLayers(); };
+  }, [from[0], from[1], to[0], to[1]]);
+
+  return null;
+};
+
 const ClientOrderDetailsModal: React.FC<{
   order: Order;
   onClose: () => void;
@@ -712,13 +776,25 @@ const TrackingView: React.FC<{
               </span>
             </div>
             <div className="h-[280px]">
-              <div className="h-full w-full bg-gray-100 flex items-center justify-center">
-                <div className="text-center">
-                  <Navigation className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Mapa de seguimiento</p>
-                  <p className="text-xs text-gray-400">El repartidor está en camino</p>
-                </div>
-              </div>
+              <MapContainer center={[deliverPos[0], deliverPos[1]]} zoom={16} className="h-full w-full rounded-none" scrollWheelZoom={false} zoomControl={false}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="" />
+                <MapFollower center={deliverPos} />
+                {clientPos && <RoutePolylineLayer from={deliverPos} to={clientPos} />}
+                
+                {/* Delivery person marker (blue) */}
+                <Marker position={deliverPos} icon={L.divIcon({
+                  className: '', iconSize: [38, 38], iconAnchor: [19, 38],
+                  html: `<div style="width:38px;height:38px;background:#3b82f6;border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(59,130,246,.5)"><svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M21 10.5A8.38 8.38 0 0 0 12 2h0a8.38 8.38 0 0 0-9 8.5 4.5 4.5 0 0 0 2.25 3.891A4.77 4.77 0 0 1 12 13a4.77 4.77 0 0 1 6.75 1.391A4.5 4.5 0 0 0 21 10.5z"></path></svg></div>`
+                })} />
+                
+                {/* Client location marker (red) */}
+                {clientPos && (
+                  <Marker position={clientPos} icon={L.divIcon({
+                    className: '', iconSize: [36, 44], iconAnchor: [18, 44],
+                    html: `<div style="display:flex;flex-direction:column;align-items:center"><div style="width:32px;height:32px;background:#dc2626;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(220,38,38,.5)"></div></div>`
+                  })} />
+                )}
+              </MapContainer>
             </div>
             <div className="p-3 bg-blue-50/60 flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1.5">

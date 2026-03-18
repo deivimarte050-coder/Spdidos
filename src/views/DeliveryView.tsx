@@ -283,9 +283,9 @@ const DeliveryView: React.FC = () => {
     }
   }, []);
 
-  // Send GPS to Firebase every 4 seconds when order is ready or in active delivery
+  // Send GPS to Firebase every 4 seconds when order is ready, on its way, or arrived
   useEffect(() => {
-    if (myOrder?.id && ['ready', 'on_the_way'].includes(myOrder.status)) {
+    if (myOrder?.id && ['ready', 'on_the_way', 'arrived'].includes(myOrder.status)) {
       gpsIntervalRef.current = setInterval(() => {
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(pos => {
@@ -326,6 +326,7 @@ const DeliveryView: React.FC = () => {
     if (!myOrder) return;
     try {
       await FirebaseServiceV2.updateOrder(myOrder.id, { status: 'arrived' });
+      await FirebaseServiceV2.updateDeliveryLocation(myOrder.id, myLocation[0], myLocation[1]);
     } catch (err) { console.error('Error marcando llegada:', err); }
   };
 
