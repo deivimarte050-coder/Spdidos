@@ -11,6 +11,8 @@ import Auth from './components/Auth';
 import DeliveryView from './views/DeliveryView';
 import BusinessView from './views/BusinessView';
 import AdminView from './views/AdminView';
+import { InstallTooltip } from './components/InstallTooltip';
+import { IPhoneInstallModal } from './components/IPhoneInstallModal';
 import { CartItem, View, Order, BusinessDayKey, MenuItem, AppNotification } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DataService, { Business } from './services/DataService';
@@ -20,6 +22,7 @@ import { soundService } from './services/SoundService';
 import { initFCMToken, listenFCMForeground } from './services/FCMService';
 import OrderNotificationService from './services/OrderNotificationService';
 import { LOGO_URL, SPM_CENTER } from './constants';
+import { isIOSDevice, shouldShowInstallPrompt, dismissInstallPrompt } from './utils/deviceDetection';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -1149,6 +1152,8 @@ function AppContent() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [canInstallApp, setCanInstallApp] = useState(false);
   const [isStandaloneMode, setIsStandaloneMode] = useState<boolean>(() => isStandaloneDisplayMode());
+  const [showInstallTooltip, setShowInstallTooltip] = useState(false);
+  const [showIPhoneModal, setShowIPhoneModal] = useState(false);
   const sharedAuthNoticeShownRef = useRef(false);
   const hadAuthenticatedSessionRef = useRef(false);
   const deliveryUnsubRef = useRef<(() => void) | null>(null);
@@ -1175,6 +1180,13 @@ function AppContent() {
   };
 
   const handleInstallApp = async () => {
+    // Check if iPhone Safari
+    if (isIOSDevice()) {
+      setShowIPhoneModal(true);
+      return;
+    }
+
+    // For Android/Desktop - use beforeinstallprompt if available
     if (!deferredInstallPrompt) {
       alert('Para instalar la app, abre el menú de Chrome (⋮) y toca "Agregar a pantalla principal" o "Instalar aplicación".');
       return;
@@ -1187,6 +1199,7 @@ function AppContent() {
     } finally {
       setDeferredInstallPrompt(null);
       setCanInstallApp(false);
+      dismissInstallPrompt();
     }
   };
 
@@ -1229,6 +1242,17 @@ function AppContent() {
       }
     };
   }, []);
+
+  // Show install tooltip when app can be installed
+  useEffect(() => {
+    if (canInstallApp && shouldShowInstallPrompt() && !isStandaloneMode) {
+      // Show tooltip after 2 seconds
+      const timer = setTimeout(() => {
+        setShowInstallTooltip(true);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [canInstallApp, isStandaloneMode]);
 
   // ── FCM: register SW, request permission, get token, start foreground listener
   useEffect(() => {
@@ -3352,6 +3376,27 @@ function AppContent() {
         onTransferAccountChange={setSelectedTransferAccountIndex}
         transferReceiptImage={transferReceiptImage}
         onTransferReceiptChange={setTransferReceiptImage}
+      />
+
+      {/* Install App Tooltip */}
+      {canInstallApp && !isStandaloneMode && (
+        <InstallTooltip 
+          isVisible={showInstallTooltip}
+          onDismiss={() => {
+            setShowInstallTooltip(false);
+            dismissInstallPrompt();
+          }}
+          onInstallClick={handleInstallApp}
+        />
+      )}
+
+      {/* iPhone Install Instructions Modal */}
+      <IPhoneInstallModal 
+        isOpen={showIPhoneModal}
+        onClose={() => {
+          setShowIPhoneModal(false);
+          dismissInstallPrompt();
+        }}
       />
     </Layout>
     </>
