@@ -221,6 +221,7 @@ const DeliveryView: React.FC = () => {
   const [myLocation, setMyLocation] = useState<[number, number]>(SPM_CENTER);
   const [clientLiveLocation, setClientLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [supportWhatsAppNumber, setSupportWhatsAppNumber] = useState('');
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -229,6 +230,20 @@ const DeliveryView: React.FC = () => {
     }, 60_000);
     return () => clearInterval(timer);
   }, []);
+
+  // Load support WhatsApp number
+  useEffect(() => {
+    const loadSupportNumber = async () => {
+      try {
+        const number = await FirebaseServiceV2.getSupportWhatsAppNumber();
+        setSupportWhatsAppNumber(number);
+      } catch (error) {
+        console.error('Error loading support number:', error);
+      }
+    };
+    loadSupportNumber();
+  }, []);
+
   // Subscribe to available orders — sound is handled globally in App.tsx
   useEffect(() => {
     const unsub = FirebaseServiceV2.subscribeToDeliveryOrders((orders) => {
@@ -651,6 +666,20 @@ const DeliveryView: React.FC = () => {
             className={`flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-xs transition-all ${isAvailable ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
             <Power className="w-3.5 h-3.5" />
             {isAvailable ? 'ACTIVO' : 'INACTIVO'}
+          </button>
+          <button 
+            onClick={() => {
+              if (!supportWhatsAppNumber) {
+                alert('El número de soporte no está disponible en este momento.');
+                return;
+              }
+              const message = encodeURIComponent('Hola, necesito ayuda con mis entregas en Spdidos.');
+              window.open(`https://wa.me/${supportWhatsAppNumber.replace(/\D/g, '')}?text=${message}`, '_blank');
+            }}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-xs bg-green-50 text-green-600 hover:bg-green-100 transition-all"
+            title="Contactar soporte por WhatsApp"
+          >
+            <MessageCircle className="w-3.5 h-3.5" /> Soporte
           </button>
           <button onClick={logout} className="flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-xs bg-red-50 text-red-600">
             <LogOut className="w-3.5 h-3.5" /> Salir

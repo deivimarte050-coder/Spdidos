@@ -16,6 +16,7 @@ const BusinessView: React.FC = () => {
   const [businessId, setBusinessId] = useState<string | null>((user as any)?.businessId || null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'profile' | 'menu' | 'orders'>('dashboard');
   const [todayKey, setTodayKey] = useState(() => new Date().toDateString());
+  const [supportWhatsAppNumber, setSupportWhatsAppNumber] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -63,6 +64,19 @@ const BusinessView: React.FC = () => {
       setTodayKey((currentKey) => currentKey === nextKey ? currentKey : nextKey);
     }, 60_000);
     return () => window.clearInterval(interval);
+  }, []);
+
+  // Load support WhatsApp number
+  useEffect(() => {
+    const loadSupportNumber = async () => {
+      try {
+        const number = await FirebaseServiceV2.getSupportWhatsAppNumber();
+        setSupportWhatsAppNumber(number);
+      } catch (error) {
+        console.error('Error loading support number:', error);
+      }
+    };
+    loadSupportNumber();
   }, []);
 
   const getOrderDate = (order: Order): Date | null => {
@@ -141,6 +155,21 @@ const BusinessView: React.FC = () => {
               <div className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-bold">
                 Abierto
               </div>
+              <button 
+                onClick={() => {
+                  if (!supportWhatsAppNumber) {
+                    alert('El número de soporte no está disponible en este momento.');
+                    return;
+                  }
+                  const message = encodeURIComponent('Hola, necesito ayuda con mi negocio en Spdidos.');
+                  window.open(`https://wa.me/${supportWhatsAppNumber.replace(/\D/g, '')}?text=${message}`, '_blank');
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm bg-green-50 text-green-600 hover:bg-green-100 transition-all shadow-lg"
+                title="Contactar soporte por WhatsApp"
+              >
+                <MessageCircle className="w-4 h-4" />
+                SOPORTE
+              </button>
               <button 
                 onClick={logout}
                 className="flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm bg-red-50 text-red-600 hover:bg-red-100 transition-all shadow-lg"
