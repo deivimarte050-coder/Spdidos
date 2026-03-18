@@ -711,7 +711,11 @@ const AdminView: React.FC = () => {
         <div className="mt-auto p-6 border-t border-gray-50">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-primary/10 rounded-full overflow-hidden">
-              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name}`} alt="avatar" />
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center text-lg">👤</div>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-gray-900 truncate">{user?.name}</p>
@@ -1586,7 +1590,11 @@ const AdminView: React.FC = () => {
                         <tr key={user.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
+                              {user.photoURL ? (
+                                <img src={user.photoURL} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">👤</div>
+                              )}
                               <p className="font-medium text-gray-900">{user.name}</p>
                             </div>
                           </td>

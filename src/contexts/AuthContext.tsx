@@ -196,6 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: 'client' as UserRole,
         status: 'active' as const,
         uid: result.user.uid,
+        photoURL: String(result.user.photoURL || ''),
       };
 
       const addUserPromise = HybridDataServiceV2.addUser(newUserData);

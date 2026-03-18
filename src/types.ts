@@ -26,6 +26,7 @@ export interface User {
   businessId?: string;
   uid?: string;
   addressDescription?: string;
+  photoURL?: string;
 }
 
 export interface Application {

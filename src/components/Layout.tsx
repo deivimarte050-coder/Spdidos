@@ -142,7 +142,13 @@ const Layout: React.FC<LayoutProps> = ({
             onClick={() => onViewChange('profile')}
             className="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-200 hover:border-primary transition-colors flex-shrink-0"
           >
-            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name}`} alt="avatar" className="w-full h-full" />
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="avatar" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
+                <span className="text-[18px]">👤</span>
+              </div>
+            )}
           </button>
         </div>
       </header>
@@ -217,7 +223,13 @@ const Layout: React.FC<LayoutProps> = ({
             onClick={() => onViewChange('profile')}
             className="w-8 h-8 rounded-full overflow-hidden border-2 border-gray-200"
           >
-            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name}`} alt="avatar" className="w-full h-full" />
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="avatar" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
+                <span className="text-[16px]">👤</span>
+              </div>
+            )}
           </button>
         </div>
       </header>

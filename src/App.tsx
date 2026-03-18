@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, Clock, Star, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid, Share2, HelpCircle, Send } from 'lucide-react';
+import { ChevronLeft, Clock, Star, CheckCircle2, ShoppingBag, MapPin, Truck, ChefHat, Package, Navigation, Bell, X, User, Volume2, LogOut, Save, Heart, Phone, MessageCircle, Mail, List, LayoutGrid, Share2, HelpCircle, Send, Camera } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import Layout from './components/Layout';
@@ -851,15 +851,71 @@ const ORDER_CANCEL_WINDOW_MS = 2 * 60 * 1000;
 // ─── Client Profile View ──────────────────────────────────────────────────────
 const ProfileView: React.FC<{ onViewChange: (v: any) => void }> = ({ onViewChange }) => {
   const { user, logout, updateUser } = useAuth();
-  const [form, setForm] = useState({ name: user?.name ?? '', phone: user?.phone ?? '', whatsapp: user?.whatsapp ?? '', addressDescription: user?.addressDescription ?? '' });
+  const [form, setForm] = useState({ name: user?.name ?? '', phone: user?.phone ?? '', whatsapp: user?.whatsapp ?? '', addressDescription: user?.addressDescription ?? '', photoURL: user?.photoURL ?? '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [supportWhatsAppNumber, setSupportWhatsAppNumber] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const compressImage = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        const canvas = document.createElement('canvas');
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            height *= 400 / width;
+            width = 400;
+          } else {
+            width *= 400 / height;
+            height = 400;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+          const quality = file.size > 500 * 1024 ? 0.6 : 0.8;
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => reject(new Error('Error al cargar imagen'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('Error al leer archivo'));
+    });
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (file.size > 5 * 1024 * 1024) {
+      alert('❌ Imagen muy grande. Máximo 5MB.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const compressedPhoto = await compressImage(file);
+      setForm(f => ({ ...f, photoURL: compressedPhoto }));
+      
+      await updateUser({ photoURL: compressedPhoto });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error) {
+      console.error('Error al subir foto:', error);
+      alert('Error al subir la foto. Intenta de nuevo.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateUser({ name: form.name.trim(), phone: form.phone.trim(), whatsapp: form.whatsapp.trim(), addressDescription: form.addressDescription.trim() });
+      await updateUser({ name: form.name.trim(), phone: form.phone.trim(), whatsapp: form.whatsapp.trim(), addressDescription: form.addressDescription.trim(), photoURL: form.photoURL });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch {
@@ -892,14 +948,38 @@ const ProfileView: React.FC<{ onViewChange: (v: any) => void }> = ({ onViewChang
     >
       <h2 className="text-2xl font-black text-gray-900">Mi Perfil</h2>
 
-      {/* Avatar */}
-      <div className="flex items-center gap-4 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/20 flex-shrink-0">
-          <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name}`} alt="avatar" className="w-full h-full" />
+      {/* Avatar - Foto real del usuario */}
+      <div className="flex items-center gap-4 bg-white rounded-2xl p-5 shadow-sm border border-gray-100 relative">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/20 flex-shrink-0">
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="profile" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
+                <User className="w-8 h-8 text-primary/50" />
+              </div>
+            )}
+          </div>
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/*" 
+            onChange={handlePhotoUpload}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full hover:bg-primary/90 transition-colors shadow-lg"
+            disabled={saving}
+          >
+            <Camera className="w-3 h-3" />
+          </button>
         </div>
         <div>
           <p className="font-black text-gray-900 text-lg">{user?.name}</p>
           <p className="text-sm text-gray-400">{user?.email}</p>
+          {user?.photoURL && <p className="text-xs text-emerald-600 mt-1">✓ Foto de perfil configurada</p>}
         </div>
       </div>
 

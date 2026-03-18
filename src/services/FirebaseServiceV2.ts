@@ -470,7 +470,7 @@ class FirebaseServiceV2 {
     }
   }
 
-  async updateUserProfile(userId: string, data: Partial<{ name: string; phone: string; whatsapp: string; addressDescription: string }>): Promise<void> {
+  async updateUserProfile(userId: string, data: Partial<{ name: string; phone: string; whatsapp: string; addressDescription: string; photoURL: string }>): Promise<void> {
     try {
       await updateDoc(doc(db, COLLECTIONS.USERS, userId), data);
     } catch (error) {
